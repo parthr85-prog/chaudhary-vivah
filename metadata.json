@@ -1,0 +1,6 @@
+{
+  "name": "ચૌધરી વિવાહ",
+  "description": "ચૌધરી સમાજ માટે લગ્ન મેટ્રિમોની પ્લેટફોર્મ - સબ-કાસ્ટ, ગોત્ર, મોસાળનું ગામ, AI કુંડળી મિલન, Top 5 AI પિક્સ અને આધાર વેરિફિકેશન સાથે.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

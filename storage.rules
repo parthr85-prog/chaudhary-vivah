@@ -1,0 +1,62 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == 'srushtichaudhary11@gmail.com' ||
+        request.auth.uid == 'ADMIN_SRUSHTI'
+      );
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isUnder5MB() {
+      return request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // Profile Photos Path (profile_photos/{fileName})
+    match /profile_photos/{fileName} {
+      // Anyone can view profile photos (needed for matrimony discovery)
+      allow read: if true;
+      
+      // Allow upload of images up to 5MB
+      allow write: if isImage() && isUnder5MB();
+      
+      // Allow delete for authenticated user or admin
+      allow delete: if isAuthenticated() || isAdmin();
+    }
+
+    // Aadhar Documents Path (aadhar_documents/{fileName})
+    match /aadhar_documents/{fileName} {
+      // Allow read for verification
+      allow read: if true;
+      
+      // Allow upload of Aadhar documents up to 5MB
+      allow write: if isImage() && isUnder5MB();
+      
+      // Allow delete for authenticated user or admin
+      allow delete: if isAuthenticated() || isAdmin();
+    }
+
+    // Chat Attachments & General Media Path (chat_attachments/{fileName})
+    match /chat_attachments/{fileName} {
+      allow read: if true;
+      allow write: if isImage() && isUnder5MB();
+      allow delete: if isAuthenticated() || isAdmin();
+    }
+
+    // Default fallback rule for any other files
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if isImage() && isUnder5MB();
+    }
+  }
+}
