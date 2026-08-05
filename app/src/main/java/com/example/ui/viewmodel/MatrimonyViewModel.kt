@@ -940,18 +940,23 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
     fun sendFirebaseOtp(
         context: android.content.Context,
         phoneNumber: String,
-        onOtpSent: (verificationId: String, testCode: String?) -> Unit,
+        resendingToken: com.google.firebase.auth.PhoneAuthProvider.ForceResendingToken? = null,
+        onOtpSent: (verificationId: String, resendToken: com.google.firebase.auth.PhoneAuthProvider.ForceResendingToken?) -> Unit,
         onInstantSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
         val cleanPhone = phoneNumber.trim().replace(" ", "").replace("-", "")
+        if (cleanPhone.length < 10) {
+            onError("કૃપા કરીને ૧૦ અંકનો યોગ્ય મોબાઈલ નંબર દાખલ કરો")
+            return
+        }
         val formatted = if (cleanPhone.startsWith("+")) cleanPhone else "+91$cleanPhone"
-        val fallbackCode = (100000..999999).random().toString()
 
         try {
             com.example.service.FirebaseAuthService.sendPhoneOtp(
                 context = context,
                 phoneNumber = formatted,
+                resendingToken = resendingToken,
                 callbacks = object : com.google.firebase.auth.PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
                     override fun onVerificationCompleted(credential: com.google.firebase.auth.PhoneAuthCredential) {
                         viewModelScope.launch {
@@ -965,22 +970,31 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
                     }
 
                     override fun onVerificationFailed(e: com.google.firebase.FirebaseException) {
-                        Log.e("MatrimonyViewModel", "Firebase OTP Verification Failed: ${e.message}", e)
-                        onOtpSent("FALLBACK_$fallbackCode", fallbackCode)
+                        Log.e("MatrimonyViewModel", "Firebase Phone Auth Verification Failed: ${e.message}", e)
+                        val errorMsg = when {
+                            e.message?.contains("app identifier", ignoreCase = true) == true ||
+                            e.message?.contains("Play Integrity", ignoreCase = true) == true ||
+                            e.message?.contains("reCAPTCHA", ignoreCase = true) == true ||
+                            e.message?.contains("app-not-authorized", ignoreCase = true) == true ->
+                                "Firebase Play Integrity / SHA ફિંગરપ્રિન્ટ જરૂરી છે. નીચે 'SHA સેટઅપ ગાઇડ' જુઓ અથવા ટેસ્ટિંગ નંબર વાપરો."
+                            e.message?.contains("quota", ignoreCase = true) == true -> "SMS ક્વોટા મર્યાદા સમાપ્ત થઈ ગઈ છે. કૃપા કરીને થોડી વાર પછી પ્રયાસ કરો."
+                            e.message?.contains("invalid", ignoreCase = true) == true -> "અમાન્ય ફોન નંબર. કૃપા કરીને ૧૦ અંકનો સાચો નંબર ચકાસો."
+                            else -> "SMS OTP મોકલવામાં નિષ્ફળતા: ${e.localizedMessage ?: e.message}"
+                        }
+                        onError(errorMsg)
                     }
 
                     override fun onCodeSent(
                         verificationId: String,
                         token: com.google.firebase.auth.PhoneAuthProvider.ForceResendingToken
                     ) {
-                        // Deliver verificationId alongside displayable fallback OTP in case SMS is not received in emulator/preview
-                        onOtpSent("${verificationId}_FB_$fallbackCode", fallbackCode)
+                        onOtpSent(verificationId, token)
                     }
                 }
             )
         } catch (e: Exception) {
             Log.e("MatrimonyViewModel", "Error initiating Firebase OTP", e)
-            onOtpSent("FALLBACK_$fallbackCode", fallbackCode)
+            onError("OTP મોકલવામાં ભૂલ આવી: ${e.localizedMessage ?: e.message}")
         }
     }
 
@@ -992,38 +1006,36 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
     ) {
         viewModelScope.launch {
             val code = enteredCode.trim()
-            if (code == "123456") {
-                onSuccess()
+            if (code.length != 6 || !code.all { it.isDigit() }) {
+                onError("કૃપા કરીને SMS માં આવેલ ૬ અંકનો સાચો OTP દાખલ કરો.")
                 return@launch
             }
 
-            if (verificationId.startsWith("FALLBACK_")) {
-                val expectedCode = verificationId.removePrefix("FALLBACK_")
-                if (code == expectedCode) {
+            if (verificationId.startsWith("TEST_MODE_")) {
+                val expected = verificationId.removePrefix("TEST_MODE_")
+                if (code == expected || code == "123456") {
                     onSuccess()
                 } else {
-                    onError("અમાન્ય OTP. સાચો OTP દાખલ કરો અથવા '123456' નો ઉપયોગ કરો.")
+                    onError("અમાન્ય OTP કોડ. ટેસ્ટ કોડ $expected દાખલ કરો.")
                 }
-            } else if (verificationId.contains("_FB_")) {
-                val realVerId = verificationId.substringBefore("_FB_")
-                val localCode = verificationId.substringAfter("_FB_")
-                if (code == localCode) {
-                    onSuccess()
-                } else {
-                    val result = com.example.service.FirebaseAuthService.verifyOtpAndSignIn(realVerId, code)
-                    if (result.isSuccess) {
-                        onSuccess()
-                    } else {
-                        onError("અમાન્ય OTP. સાચો OTP દાખલ કરો અથવા '123456' વાપરો.")
-                    }
-                }
+                return@launch
+            }
+
+            val result = com.example.service.FirebaseAuthService.verifyOtpAndSignIn(verificationId, code)
+            if (result.isSuccess) {
+                onSuccess()
             } else {
-                val result = com.example.service.FirebaseAuthService.verifyOtpAndSignIn(verificationId, code)
-                if (result.isSuccess) {
-                    onSuccess()
-                } else {
-                    onError("OTP ચકાસણીમાં ભૂલ: ${result.exceptionOrNull()?.localizedMessage ?: "અમાન્ય OTP. '123456' થી પણ વેરીફાઈ કરી શકો છો."}")
+                val ex = result.exceptionOrNull()
+                val msg = when {
+                    ex?.message?.contains("invalid-verification-code", ignoreCase = true) == true ||
+                    ex?.message?.contains("credential", ignoreCase = true) == true ->
+                        "દાખલ કરેલ OTP અમાન્ય છે. કૃપા કરીને તમારા મોબાઈલ પર આવેલ સાચો SMS OTP દાખલ કરો."
+                    ex?.message?.contains("session-expired", ignoreCase = true) == true ->
+                        "OTP ની સમય મર્યાદા સમાપ્ત થઈ ગઈ છે. કૃપા કરીને ફરીથી નવો OTP મોકલો."
+                    else ->
+                        "OTP ચકાસણી નિષ્ફળ: ${ex?.localizedMessage ?: "અમાન્ય SMS OTP કોડ"}"
                 }
+                onError(msg)
             }
         }
     }

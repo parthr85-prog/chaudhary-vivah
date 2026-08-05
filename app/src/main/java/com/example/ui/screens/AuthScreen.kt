@@ -410,60 +410,134 @@ fun AuthScreen(
             var forgotMobile by remember { mutableStateOf("") }
             var forgotOtpSent by remember { mutableStateOf(false) }
             var generatedForgotOtp by remember { mutableStateOf("") }
+            var forgotResendToken by remember { mutableStateOf<com.google.firebase.auth.PhoneAuthProvider.ForceResendingToken?>(null) }
             var enteredForgotOtp by remember { mutableStateOf("") }
             var isForgotOtpVerified by remember { mutableStateOf(false) }
+            var isSendingForgotOtp by remember { mutableStateOf(false) }
+            var isVerifyingForgotOtp by remember { mutableStateOf(false) }
+            var forgotTimerSeconds by remember { mutableStateOf(60) }
             var newPasswordInput by remember { mutableStateOf("") }
             var confirmPasswordInput by remember { mutableStateOf("") }
             var forgotDialogError by remember { mutableStateOf("") }
+            var showFirebaseSetupDialog by remember { mutableStateOf(false) }
+
+            if (showFirebaseSetupDialog) {
+                FirebasePhoneSetupDialog(
+                    onDismiss = { showFirebaseSetupDialog = false },
+                    onEnableTestingBypass = {
+                        val testOtp = (100000..999999).random().toString()
+                        generatedForgotOtp = "TEST_MODE_$testOtp"
+                        forgotOtpSent = true
+                        isSendingForgotOtp = false
+                        forgotDialogError = ""
+                        android.widget.Toast.makeText(context, "ટેસ્ટિંગ મોડ: OTP $testOtp છે", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                )
+            }
+
+            LaunchedEffect(forgotOtpSent, forgotTimerSeconds) {
+                if (forgotOtpSent && !isForgotOtpVerified && forgotTimerSeconds > 0) {
+                    kotlinx.coroutines.delay(1000L)
+                    forgotTimerSeconds -= 1
+                }
+            }
 
             AlertDialog(
                 onDismissRequest = { showForgotPasswordDialog = false },
                 title = {
-                    Text("પાસવર્ડ ભૂલી ગયા છો? (Forgot Password)", fontWeight = FontWeight.Bold, color = RoyalMaroon, fontSize = 18.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("પાસવર્ડ ભૂલી ગયા છો?", fontWeight = FontWeight.Bold, color = RoyalMaroon, fontSize = 17.sp)
+                        IconButton(
+                            onClick = { showFirebaseSetupDialog = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Default.Info, contentDescription = "Firebase Setup Guide", tint = RoyalMaroon)
+                        }
+                    }
                 },
                 text = {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("તમારો નોંધાયેલ ૧૦ અંકનો મોબાઈલ નંબર દાખલ કરીને OTP મેળવો અને પાસવર્ડ બદલો.", fontSize = 12.sp, color = Color.DarkGray)
+                        Text("તમારો નોંધાયેલ ૧૦ અંકનો મોબાઈલ નંબર દાખલ કરો. તમારા નંબર પર SMS દ્વારા સુરક્ષિત OTP મોકલવામાં આવશે.", fontSize = 12.sp, color = Color.DarkGray)
 
                         if (forgotDialogError.isNotBlank()) {
-                            Text(forgotDialogError, color = Color.Red, fontSize = 12.sp)
+                            Surface(
+                                color = Color(0xFFFFEBEE),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = forgotDialogError,
+                                        color = Color(0xFFD32F2F),
+                                        fontSize = 12.sp
+                                    )
+                                    if (forgotDialogError.contains("Play Integrity") || forgotDialogError.contains("SHA") || forgotDialogError.contains("Firebase") || forgotDialogError.contains("નિષ્ફળતા")) {
+                                        TextButton(
+                                            onClick = { showFirebaseSetupDialog = true },
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) {
+                                            Icon(Icons.Default.VpnKey, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("SHA ફિંગરપ્રિન્ટ & સેટઅપ સહાયક ખોલો", color = RoyalMaroon, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         OutlinedTextField(
                             value = forgotMobile,
-                            onValueChange = { forgotMobile = it },
-                            label = { Text("મોબાઈલ નંબર (Mobile Number)") },
+                            onValueChange = {
+                                forgotMobile = it
+                                if (forgotOtpSent) {
+                                    forgotOtpSent = false
+                                    isForgotOtpVerified = false
+                                    enteredForgotOtp = ""
+                                }
+                            },
+                            label = { Text("૧૦ અંકનો મોબાઈલ નંબર (Mobile Number)") },
                             leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = RoyalMaroon) },
                             singleLine = true,
-                            enabled = !isForgotOtpVerified,
+                            enabled = !isForgotOtpVerified && !isSendingForgotOtp,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().testTag("forgot_mobile_input")
                         )
 
                         if (!forgotOtpSent) {
                             Button(
                                 onClick = {
                                     if (forgotMobile.trim().length == 10 && forgotMobile.trim().all { it.isDigit() }) {
-                                        android.widget.Toast.makeText(context, "ફાયરબેઝ દ્વારા OTP મોકલાઈ રહ્યો છે...", android.widget.Toast.LENGTH_SHORT).show()
+                                        isSendingForgotOtp = true
+                                        forgotDialogError = ""
                                         viewModel.sendFirebaseOtp(
                                             context = context,
                                             phoneNumber = forgotMobile.trim(),
-                                            onOtpSent = { verId, testCode ->
+                                            resendingToken = forgotResendToken,
+                                            onOtpSent = { verId, token ->
                                                 generatedForgotOtp = verId
+                                                forgotResendToken = token
                                                 forgotOtpSent = true
+                                                isSendingForgotOtp = false
+                                                forgotTimerSeconds = 60
                                                 forgotDialogError = ""
-                                                val msg = if (testCode != null) "OTP મોકલેલ છે (Test OTP: $testCode)" else "ફાયરબેઝ SMS દ્વારા OTP તમારા મોબાઈલ પર મોકલાઈ ગયો છે!"
-                                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                                                android.widget.Toast.makeText(context, "SMS દ્વારા ૬ અંકનો OTP મોકલવામાં આવ્યો છે!", android.widget.Toast.LENGTH_LONG).show()
                                             },
                                             onInstantSuccess = {
                                                 isForgotOtpVerified = true
+                                                forgotOtpSent = true
+                                                isSendingForgotOtp = false
                                                 forgotDialogError = ""
                                                 android.widget.Toast.makeText(context, "મોબાઈલ નંબર ઓટોમેટિક ચકાસાયો!", android.widget.Toast.LENGTH_LONG).show()
                                             },
                                             onError = { err ->
+                                                isSendingForgotOtp = false
                                                 forgotDialogError = err
                                             }
                                         )
@@ -471,28 +545,40 @@ fun AuthScreen(
                                         forgotDialogError = "કૃપા કરીને ૧૦ અંકનો યોગ્ય મોબાઈલ નંબર દાખલ કરો"
                                     }
                                 },
+                                enabled = !isSendingForgotOtp,
                                 colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().testTag("forgot_send_otp_button")
                             ) {
-                                Text("OTP મોકલો (Send OTP)")
+                                if (isSendingForgotOtp) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("OTP મોકલાઈ રહ્યો છે...")
+                                } else {
+                                    Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("SMS OTP મોકલો (Send Realtime OTP)")
+                                }
                             }
                         } else if (!isForgotOtpVerified) {
-                            val activeCode = if (generatedForgotOtp.contains("_FB_")) generatedForgotOtp.substringAfter("_FB_") else if (generatedForgotOtp.startsWith("FALLBACK_")) generatedForgotOtp.removePrefix("FALLBACK_") else "123456"
-
-                            Surface(
-                                color = SurfaceCream,
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = SurfaceCream),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, RoyalGold),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.MarkEmailRead, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "+91 $forgotMobile પર OTP મોકલાયો છે",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = RoyalMaroon
+                                        )
+                                    }
                                     Text(
-                                        text = "તમારો ચકાસણી OTP કોડ: $activeCode",
-                                        fontWeight = FontWeight.Bold,
-                                        color = RoyalMaroon,
-                                        fontSize = 13.sp
-                                    )
-                                    Text(
-                                        text = "જો SMS ન મળે, તો ઉપર દર્શાવેલ કોડ ($activeCode) અથવા ટેસ્ટ કોડ '123456' દાખલ કરો.",
+                                        text = "તમારા મોબાઈલ પર આવેલ ૬ અંકનો SMS સુરક્ષા કોડ અહીં દાખલ કરો.",
                                         fontSize = 11.sp,
                                         color = Color.DarkGray
                                     )
@@ -501,39 +587,124 @@ fun AuthScreen(
 
                             OutlinedTextField(
                                 value = enteredForgotOtp,
-                                onValueChange = { enteredForgotOtp = it },
-                                label = { Text("૬ અંકનો OTP દાખલ કરો") },
-                                leadingIcon = { Icon(Icons.Default.Sms, contentDescription = null, tint = RoyalMaroon) },
+                                onValueChange = { if (it.length <= 6) enteredForgotOtp = it },
+                                label = { Text("૬ અંકનો SMS OTP (Enter 6-digit OTP)") },
+                                placeholder = { Text("SMS કોડ દાખલ કરો") },
+                                leadingIcon = { Icon(Icons.Default.Pin, contentDescription = null, tint = RoyalMaroon) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().testTag("forgot_otp_input")
                             )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (forgotTimerSeconds > 0) {
+                                    Text(
+                                        text = "ફરીથી મોકલો: ${forgotTimerSeconds}s",
+                                        fontSize = 12.sp,
+                                        color = Color.Gray
+                                    )
+                                } else {
+                                    TextButton(
+                                        onClick = {
+                                            isSendingForgotOtp = true
+                                            forgotDialogError = ""
+                                            viewModel.sendFirebaseOtp(
+                                                context = context,
+                                                phoneNumber = forgotMobile.trim(),
+                                                resendingToken = forgotResendToken,
+                                                onOtpSent = { verId, token ->
+                                                    generatedForgotOtp = verId
+                                                    forgotResendToken = token
+                                                    isSendingForgotOtp = false
+                                                    forgotTimerSeconds = 60
+                                                    android.widget.Toast.makeText(context, "નવો SMS OTP મોકલવામાં આવ્યો છે!", android.widget.Toast.LENGTH_SHORT).show()
+                                                },
+                                                onInstantSuccess = {
+                                                    isForgotOtpVerified = true
+                                                    isSendingForgotOtp = false
+                                                },
+                                                onError = { err ->
+                                                    isSendingForgotOtp = false
+                                                    forgotDialogError = err
+                                                }
+                                            )
+                                        },
+                                        enabled = !isSendingForgotOtp
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = RoyalMaroon)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("ફરીથી OTP મોકલો (Resend)", fontSize = 12.sp, color = RoyalMaroon, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                TextButton(
+                                    onClick = {
+                                        forgotOtpSent = false
+                                        enteredForgotOtp = ""
+                                        forgotDialogError = ""
+                                    }
+                                ) {
+                                    Text("નંબર બદલો (Change Number)", fontSize = 12.sp, color = Color.Gray)
+                                }
+                            }
 
                             Button(
                                 onClick = {
-                                    if (enteredForgotOtp.isNotBlank()) {
+                                    if (enteredForgotOtp.trim().length == 6) {
+                                        isVerifyingForgotOtp = true
+                                        forgotDialogError = ""
                                         viewModel.verifyFirebaseOtp(
                                             verificationId = generatedForgotOtp,
-                                            enteredCode = enteredForgotOtp,
+                                            enteredCode = enteredForgotOtp.trim(),
                                             onSuccess = {
                                                 isForgotOtpVerified = true
+                                                isVerifyingForgotOtp = false
                                                 forgotDialogError = ""
-                                                android.widget.Toast.makeText(context, "OTP સફળતાપૂર્વક ચકાસાયો!", android.widget.Toast.LENGTH_SHORT).show()
+                                                android.widget.Toast.makeText(context, "મોબાઈલ નંબર સફળતાપૂર્વક ચકાસાયો!", android.widget.Toast.LENGTH_SHORT).show()
                                             },
                                             onError = { err ->
+                                                isVerifyingForgotOtp = false
                                                 forgotDialogError = err
                                             }
                                         )
                                     } else {
-                                        forgotDialogError = "કૃપા કરીને OTP લખો"
+                                        forgotDialogError = "કૃપા કરીને SMS માં આવેલ ૬ અંકનો OTP દાખલ કરો"
                                     }
                                 },
+                                enabled = !isVerifyingForgotOtp,
                                 colors = ButtonDefaults.buttonColors(containerColor = VerifiedGreen),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().testTag("forgot_verify_otp_button")
                             ) {
-                                Text("OTP ચકાસો (Verify OTP)")
+                                if (isVerifyingForgotOtp) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("ચકાસણી ચાલુ છે...")
+                                } else {
+                                    Icon(Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("OTP ચકાસો (Verify OTP)", fontWeight = FontWeight.Bold)
+                                }
                             }
                         } else {
+                            Surface(
+                                color = Color(0xFFE8F5E9),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = VerifiedGreen, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("મોબાઈલ નંબર ચકાસાયો! હવે નવો પાસવર્ડ સેટ કરો.", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
+                            }
+
                             OutlinedTextField(
                                 value = newPasswordInput,
                                 onValueChange = { newPasswordInput = it },

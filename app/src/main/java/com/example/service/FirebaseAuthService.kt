@@ -45,6 +45,7 @@ object FirebaseAuthService {
     fun sendPhoneOtp(
         context: Context,
         phoneNumber: String,
+        resendingToken: PhoneAuthProvider.ForceResendingToken? = null,
         callbacks: PhoneAuthProvider.OnVerificationStateChangedCallbacks
     ) {
         val firebaseAuth = auth
@@ -58,13 +59,16 @@ object FirebaseAuthService {
             return
         }
         val formattedNumber = if (phoneNumber.startsWith("+")) phoneNumber else "+91$phoneNumber"
-        val options = PhoneAuthOptions.newBuilder(firebaseAuth)
+        val builder = PhoneAuthOptions.newBuilder(firebaseAuth)
             .setPhoneNumber(formattedNumber)
             .setTimeout(60L, TimeUnit.SECONDS)
             .setActivity(activity)
             .setCallbacks(callbacks)
-            .build()
-        PhoneAuthProvider.verifyPhoneNumber(options)
+
+        if (resendingToken != null) {
+            builder.setForceResendingToken(resendingToken)
+        }
+        PhoneAuthProvider.verifyPhoneNumber(builder.build())
     }
 
     /**

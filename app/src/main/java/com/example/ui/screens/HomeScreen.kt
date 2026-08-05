@@ -77,6 +77,7 @@ fun HomeScreen(
     val unreadNotificationCount by viewModel.unreadNotificationCount.collectAsState()
     var showNotificationsSheet by remember { mutableStateOf(false) }
     var showMatchCompleteDeleteDialog by remember { mutableStateOf(false) }
+    var showPolicyDialog by remember { mutableStateOf(false) }
     var partnerNameInput by remember { mutableStateOf("") }
 
     val context = LocalContext.current
@@ -187,6 +188,17 @@ fun HomeScreen(
                                 tint = WarmSaffron
                             )
                         }
+                    }
+
+                    IconButton(
+                        onClick = { showPolicyDialog = true },
+                        modifier = Modifier.testTag("policy_info_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PrivacyTip,
+                            contentDescription = "Legal Policies & Website",
+                            tint = RoyalMaroon
+                        )
                     }
 
                     IconButton(
@@ -868,6 +880,89 @@ fun HomeScreen(
             dismissButton = {
                 OutlinedButton(onClick = { showMatchCompleteDeleteDialog = false }) {
                     Text(if (appLanguage == "gu") "રદ કરો" else "Cancel")
+                }
+            }
+        )
+    }
+
+    if (showPolicyDialog) {
+        var selectedTab by remember { mutableStateOf(0) }
+        val policies = listOf(
+            Triple(if (appLanguage == "gu") "પ્રાઇવસી પોલિસી" else "Privacy Policy", Icons.Default.Security,
+                "Chaudhary Vivah Privacy Policy:\n\n1. Information Collection: We collect bio-data, Gothra details, contact info, and optional Aadhar ID strictly for matrimonial verification within Chaudhary community.\n\n2. Data Usage: Used solely for Gothra exogamy validation, 36-Guna Kundli matching, and profile discovery.\n\n3. Match Complete Deletion: You can permanently delete your profile, bio-data, and photos with 1-click once your match is finalized.\n\n4. Contact Support: srushtichaudhary11@gmail.com"),
+            Triple(if (appLanguage == "gu") "રિફંડ પોલિસી" else "Refund Policy", Icons.Default.Payments,
+                "Chaudhary Vivah Refund & Cancellation Policy:\n\n1. 7-Day Refund Window: Full refund for unutilized paid subscriptions before viewing contact details or profile rejection.\n\n2. Non-Refundable: Once contact phone numbers are unlocked or after match completion account deletion.\n\n3. Processing Time: Approved refunds credited back within 5 to 7 business days to original payment method.\n\n4. Contact Support: srushtichaudhary11@gmail.com"),
+            Triple(if (appLanguage == "gu") "નિયમો અને શરતો" else "Terms & Conditions", Icons.Default.Gavel,
+                "Chaudhary Vivah Terms & Conditions:\n\n1. Legal Marriageable Age: Minimum 18 years for females and 21 years for males under Indian Marriage Act.\n\n2. Verified Chaudhary Profiles: Exclusive platform for Chaudhary community families.\n\n3. Authenticity: Submitting false bio-data or fake documents is prohibited.\n\n4. Admin Verification: All profiles undergo manual admin approval before public discovery."),
+            Triple(if (appLanguage == "gu") "ડિસ્ક્લેમર" else "Disclaimer", Icons.Default.Info,
+                "Chaudhary Vivah Disclaimer:\n\n1. Independent Check: Platform acts as matchmaking introductory portal. Families are advised to perform independent background checks.\n\n2. Kundli Milan: 36-Guna Kundli scores are for reference based on traditional astrological calculations.\n\n3. No Guaranteed Marriage Outcome: Platform facilitates introductions but does not guarantee matrimonial outcomes.")
+        )
+
+        AlertDialog(
+            onDismissRequest = { showPolicyDialog = false },
+            icon = {
+                Icon(Icons.Default.PrivacyTip, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(36.dp))
+            },
+            title = {
+                Text(
+                    text = if (appLanguage == "gu") "ચૌધરી વિવાહ પોલિસી અને વેબસાઇટ" else "Legal Policies & Web Portal",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = RoyalMaroon
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    ScrollableTabRow(
+                        selectedTabIndex = selectedTab,
+                        edgePadding = 0.dp,
+                        containerColor = Color.Transparent,
+                        contentColor = RoyalMaroon
+                    ) {
+                        policies.forEachIndexed { index, item ->
+                            Tab(
+                                selected = selectedTab == index,
+                                onClick = { selectedTab = index },
+                                text = { Text(item.first, fontSize = 11.sp, fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal) }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = LightRoseContainer),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(policies[selectedTab].second, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = policies[selectedTab].first,
+                                    fontWeight = FontWeight.Bold,
+                                    color = RoyalMaroon,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = policies[selectedTab].third,
+                                fontSize = 11.5.sp,
+                                color = Color.DarkGray,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showPolicyDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon)
+                ) {
+                    Text(if (appLanguage == "gu") "બંધ કરો" else "Close", color = Color.White)
                 }
             }
         )

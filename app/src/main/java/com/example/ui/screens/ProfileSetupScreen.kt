@@ -132,6 +132,12 @@ fun ProfileSetupScreen(
 
     var isSaving by remember { mutableStateOf(false) }
 
+    var agreeTerms by remember { mutableStateOf(false) }
+    var agreePrivacy by remember { mutableStateOf(false) }
+    var agreeDisclaimer by remember { mutableStateOf(false) }
+    var agreeRefund by remember { mutableStateOf(false) }
+    var showPolicyDetailDialogIndex by remember { mutableStateOf<Int?>(null) }
+
     var showStep1Errors by remember { mutableStateOf(false) }
     var showStep2Errors by remember { mutableStateOf(false) }
     var showStep3Errors by remember { mutableStateOf(false) }
@@ -427,6 +433,81 @@ fun ProfileSetupScreen(
             },
             containerColor = CreamBackground,
             shape = RoundedCornerShape(18.dp)
+        )
+    }
+
+    if (showPolicyDetailDialogIndex != null) {
+        val selectedIdx = showPolicyDetailDialogIndex!!
+        val policies = listOf(
+            Triple(if (appLanguage == "gu") "પ્રાઇવસી પોલિસી" else "Privacy Policy", Icons.Default.Security,
+                "Chaudhary Vivah Privacy Policy:\n\n1. Information Collection: We collect bio-data, Gothra details, contact info, and optional Aadhar ID strictly for matrimonial verification within Chaudhary community.\n\n2. Data Usage: Used solely for Gothra exogamy validation, 36-Guna Kundli matching, and profile discovery.\n\n3. Match Complete Deletion: You can permanently delete your profile, bio-data, and photos with 1-click once your match is finalized.\n\n4. Contact Support: srushtichaudhary11@gmail.com"),
+            Triple(if (appLanguage == "gu") "રિફંડ પોલિસી" else "Refund Policy", Icons.Default.Payments,
+                "Chaudhary Vivah Refund & Cancellation Policy:\n\n1. 7-Day Refund Window: Full refund for unutilized paid subscriptions before viewing contact details or profile rejection.\n\n2. Non-Refundable: Once contact phone numbers are unlocked or after match completion account deletion.\n\n3. Processing Time: Approved refunds credited back within 5 to 7 business days to original payment method.\n\n4. Contact Support: srushtichaudhary11@gmail.com"),
+            Triple(if (appLanguage == "gu") "નિયમો અને શરતો" else "Terms & Conditions", Icons.Default.Gavel,
+                "Chaudhary Vivah Terms & Conditions:\n\n1. Legal Marriageable Age: Minimum 18 years for females and 21 years for males under Indian Marriage Act.\n\n2. Verified Chaudhary Profiles: Exclusive platform for Chaudhary community families.\n\n3. Authenticity: Submitting false bio-data or fake documents is prohibited.\n\n4. Admin Verification: All profiles undergo manual admin approval before public discovery."),
+            Triple(if (appLanguage == "gu") "ડિસ્ક્લેમર" else "Disclaimer", Icons.Default.Info,
+                "Chaudhary Vivah Disclaimer:\n\n1. Independent Check: Platform acts as matchmaking introductory portal. Families are advised to perform independent background checks.\n\n2. Kundli Milan: 36-Guna Kundli scores are for reference based on traditional astrological calculations.\n\n3. No Guaranteed Marriage Outcome: Platform facilitates introductions but does not guarantee matrimonial outcomes.")
+        )
+        val urls = listOf(
+            "https://ais-dev-kbofivximmlj23x36jqlii-108666020810.asia-southeast1.run.app/app/src/main/assets/website/privacy-policy.html",
+            "https://ais-dev-kbofivximmlj23x36jqlii-108666020810.asia-southeast1.run.app/app/src/main/assets/website/refund-policy.html",
+            "https://ais-dev-kbofivximmlj23x36jqlii-108666020810.asia-southeast1.run.app/app/src/main/assets/website/terms-conditions.html",
+            "https://ais-dev-kbofivximmlj23x36jqlii-108666020810.asia-southeast1.run.app/app/src/main/assets/website/disclaimer.html"
+        )
+        val currentPolicy = policies.getOrNull(selectedIdx) ?: policies[0]
+        val currentUrl = urls.getOrNull(selectedIdx) ?: urls[0]
+
+        AlertDialog(
+            onDismissRequest = { showPolicyDetailDialogIndex = null },
+            icon = {
+                Icon(currentPolicy.second, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(36.dp))
+            },
+            title = {
+                Text(
+                    text = currentPolicy.first,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = RoyalMaroon
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = LightRoseContainer),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = currentPolicy.third,
+                                fontSize = 11.5.sp,
+                                color = Color.DarkGray,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        try {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(currentUrl))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {}
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon)
+                ) {
+                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (appLanguage == "gu") "વેબસાઇટ પેજ ઓપન કરો" else "Open Web Page", color = Color.White, fontSize = 12.sp)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showPolicyDetailDialogIndex = null }) {
+                    Text(if (appLanguage == "gu") "બંધ કરો" else "Close", fontSize = 12.sp)
+                }
+            }
         )
     }
 
@@ -881,7 +962,17 @@ fun ProfileSetupScreen(
                         voiceNotesInput = voiceNotesInput, onVoiceNotesChange = { voiceNotesInput = it },
                         isGeneratingBio = isGeneratingBio,
                         onGenerateBio = { viewModel.generateVoiceBioFromNotes(voiceNotesInput) },
-                        showErrors = showStep4Errors
+                        agreeTerms = agreeTerms, onAgreeTermsChange = { agreeTerms = it },
+                        agreePrivacy = agreePrivacy, onAgreePrivacyChange = { agreePrivacy = it },
+                        agreeDisclaimer = agreeDisclaimer, onAgreeDisclaimerChange = { agreeDisclaimer = it },
+                        agreeRefund = agreeRefund, onAgreeRefundChange = { agreeRefund = it },
+                        onOpenPolicyUrl = { policyType ->
+                            openPolicyPageInBrowserOrDialog(context, policyType) { index ->
+                                showPolicyDetailDialogIndex = index
+                            }
+                        },
+                        showErrors = showStep4Errors,
+                        appLanguage = appLanguage
                     )
                 }
             }
@@ -960,6 +1051,17 @@ fun ProfileSetupScreen(
                                     Toast.makeText(
                                         context,
                                         "લાલ રંગથી ચિહ્નિત થયેલ તમામ ફરજિયાત ખાતા ભરો! (Please fill all required fields highlighted in red)",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    return@Button
+                                }
+                                if (!agreeTerms || !agreePrivacy || !agreeDisclaimer || !agreeRefund) {
+                                    Toast.makeText(
+                                        context,
+                                        if (appLanguage == "gu")
+                                            "રજીસ્ટ્રેશન ફોર્મ સબમિટ કરવા માટે તમામ ૪ શરતો (નિયમો, પ્રાઇવસી પોલિસી, ડિસ્ક્લેમર અને રિફંડ પોલિસી) સ્વીકારવી ફરજિયાત છે!"
+                                        else
+                                            "Mandatory: Please tick all 4 checkboxes (Terms, Privacy, Disclaimer, Refund Policy) before submitting registration!",
                                         Toast.LENGTH_LONG
                                     ).show()
                                     return@Button
@@ -1335,17 +1437,50 @@ fun Step1BasicInfo(
                 }
             }
 
-            // Registration Account Credentials Section (Mobile Number & OTP)
+            // Registration Account Credentials Section (Mobile Number & Realtime SMS OTP)
             var regOtpSent by remember { mutableStateOf(false) }
             var regGeneratedOtp by remember { mutableStateOf("") }
+            var regResendToken by remember { mutableStateOf<com.google.firebase.auth.PhoneAuthProvider.ForceResendingToken?>(null) }
             var regEnteredOtp by remember { mutableStateOf("") }
             var isRegOtpVerified by remember { mutableStateOf(viewModel.isLoggedIn.value) }
+            var isSendingRegOtp by remember { mutableStateOf(false) }
+            var isVerifyingRegOtp by remember { mutableStateOf(false) }
+            var regTimerSeconds by remember { mutableStateOf(60) }
+            var regOtpError by remember { mutableStateOf("") }
+            var showFirebaseSetupDialog by remember { mutableStateOf(false) }
+
+            if (showFirebaseSetupDialog) {
+                FirebasePhoneSetupDialog(
+                    onDismiss = { showFirebaseSetupDialog = false },
+                    onEnableTestingBypass = {
+                        val testOtp = (100000..999999).random().toString()
+                        regGeneratedOtp = "TEST_MODE_$testOtp"
+                        regOtpSent = true
+                        isSendingRegOtp = false
+                        regTimerSeconds = 60
+                        regOtpError = ""
+                        Toast.makeText(context, "ટેસ્ટિંગ મોડ: OTP $testOtp છે", Toast.LENGTH_LONG).show()
+                    }
+                )
+            }
+
+            LaunchedEffect(regOtpSent, regTimerSeconds) {
+                if (regOtpSent && !isRegOtpVerified && regTimerSeconds > 0) {
+                    kotlinx.coroutines.delay(1000L)
+                    regTimerSeconds -= 1
+                }
+            }
 
             OutlinedTextField(
                 value = regEmail,
                 onValueChange = {
                     onRegEmailChange(it)
-                    isRegOtpVerified = false
+                    if (regOtpSent) {
+                        regOtpSent = false
+                        isRegOtpVerified = false
+                        regEnteredOtp = ""
+                        regOtpError = ""
+                    }
                 },
                 label = { Text("લૉગિન મોબાઈલ નંબર (10 Digit Mobile Number - ફરજિયાત *)") },
                 placeholder = { Text("૧૦ અંકનો મોબાઈલ નંબર દાખલ કરો") },
@@ -1354,6 +1489,7 @@ fun Step1BasicInfo(
                     .testTag("reg_email_input"),
                 leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = RoyalMaroon) },
                 singleLine = true,
+                enabled = !isRegOtpVerified && !isSendingRegOtp,
                 isError = showErrors && (regEmail.isBlank() || regEmail.length != 10 || !regEmail.all { it.isDigit() }),
                 supportingText = {
                     if (showErrors && (regEmail.isBlank() || regEmail.length != 10 || !regEmail.all { it.isDigit() })) {
@@ -1372,62 +1508,121 @@ fun Step1BasicInfo(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Security, contentDescription = null, tint = RoyalMaroon)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("મોબાઈલ નંબર ચકાસણી (OTP Verification)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RoyalMaroon)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Security, contentDescription = null, tint = RoyalMaroon)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("મોબાઈલ નંબર ચકાસણી (Realtime OTP)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RoyalMaroon)
+                            }
+                            IconButton(
+                                onClick = { showFirebaseSetupDialog = true },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.Info, contentDescription = "Firebase Setup Guide", tint = RoyalMaroon, modifier = Modifier.size(20.dp))
+                            }
+                        }
+
+                        if (regOtpError.isNotBlank()) {
+                            Surface(
+                                color = Color(0xFFFFEBEE),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = regOtpError,
+                                        color = Color(0xFFD32F2F),
+                                        fontSize = 12.sp
+                                    )
+                                    if (regOtpError.contains("Play Integrity") || regOtpError.contains("SHA") || regOtpError.contains("Firebase") || regOtpError.contains("નિષ્ફળતા")) {
+                                        TextButton(
+                                            onClick = { showFirebaseSetupDialog = true },
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) {
+                                            Icon(Icons.Default.VpnKey, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("SHA ફિંગરપ્રિન્ટ & સેટઅપ સહાયક ખોલો", color = RoyalMaroon, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         if (!regOtpSent) {
                             Button(
                                 onClick = {
                                     if (regEmail.trim().length == 10 && regEmail.trim().all { it.isDigit() }) {
-                                        Toast.makeText(context, "ફાયરબેઝ દ્વારા OTP મોકલાઈ રહ્યો છે...", Toast.LENGTH_SHORT).show()
+                                        isSendingRegOtp = true
+                                        regOtpError = ""
                                         viewModel.sendFirebaseOtp(
                                             context = context,
                                             phoneNumber = regEmail.trim(),
-                                            onOtpSent = { verId, testCode ->
+                                            resendingToken = regResendToken,
+                                            onOtpSent = { verId, token ->
                                                 regGeneratedOtp = verId
+                                                regResendToken = token
                                                 regOtpSent = true
-                                                val msg = if (testCode != null) "OTP મોકલેલ છે: $testCode (અથવા 123456 વાપરો)" else "ફાયરબેઝ SMS દ્વારા OTP તમારા મોબાઈલ પર મોકલાઈ ગયો છે!"
-                                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                                isSendingRegOtp = false
+                                                regTimerSeconds = 60
+                                                regOtpError = ""
+                                                Toast.makeText(context, "SMS દ્વારા ૬ અંકનો સુરક્ષિત OTP મોકલવામાં આવ્યો છે!", Toast.LENGTH_LONG).show()
                                             },
                                             onInstantSuccess = {
                                                 isRegOtpVerified = true
+                                                regOtpSent = true
+                                                isSendingRegOtp = false
+                                                regOtpError = ""
                                                 Toast.makeText(context, "મોબાઈલ નંબર ઓટોમેટિક ચકાસાયો!", Toast.LENGTH_LONG).show()
                                             },
                                             onError = { err ->
+                                                isSendingRegOtp = false
+                                                regOtpError = err
                                                 Toast.makeText(context, err, Toast.LENGTH_LONG).show()
                                             }
                                         )
                                     } else {
-                                        Toast.makeText(context, "કૃપા કરીને પ્રથમ ૧૦ અંકનો યોગ્ય મોબાઈલ નંબર દાખલ કરો", Toast.LENGTH_SHORT).show()
+                                        regOtpError = "કૃપા કરીને પ્રથમ ૧૦ અંકનો યોગ્ય મોબાઈલ નંબર દાખલ કરો"
+                                        Toast.makeText(context, regOtpError, Toast.LENGTH_SHORT).show()
                                     }
                                 },
+                                enabled = !isSendingRegOtp,
                                 colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().testTag("reg_send_otp_button")
                             ) {
-                                Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("OTP મોકલો (Send OTP)")
+                                if (isSendingRegOtp) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("SMS OTP મોકલાઈ રહ્યો છે...")
+                                } else {
+                                    Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("SMS OTP મોકલો (Send Realtime OTP)")
+                                }
                             }
                         } else {
-                            val activeCode = if (regGeneratedOtp.contains("_FB_")) regGeneratedOtp.substringAfter("_FB_") else if (regGeneratedOtp.startsWith("FALLBACK_")) regGeneratedOtp.removePrefix("FALLBACK_") else "123456"
-
-                            Surface(
-                                color = SurfaceCream,
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = SoftGold.copy(alpha = 0.35f)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, RoyalGold),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.MarkEmailRead, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "+91 $regEmail પર OTP મોકલાયો છે",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = RoyalMaroon
+                                        )
+                                    }
                                     Text(
-                                        text = "તમારો ચકાસણી OTP કોડ: $activeCode",
-                                        fontWeight = FontWeight.Bold,
-                                        color = RoyalMaroon,
-                                        fontSize = 13.sp
-                                    )
-                                    Text(
-                                        text = "જો SMS ન મળે, તો ઉપર દર્શાવેલ કોડ ($activeCode) અથવા ટેસ્ટ કોડ '123456' દાખલ કરો.",
+                                        text = "તમારા મોબાઈલ પર આવેલ ૬ અંકનો SMS કોડ નીચે દાખલ કરો.",
                                         fontSize = 11.sp,
                                         color = Color.DarkGray
                                     )
@@ -1436,38 +1631,110 @@ fun Step1BasicInfo(
 
                             OutlinedTextField(
                                 value = regEnteredOtp,
-                                onValueChange = { regEnteredOtp = it },
-                                label = { Text("૬ અંકનો OTP દાખલ કરો") },
+                                onValueChange = { if (it.length <= 6) regEnteredOtp = it },
+                                label = { Text("૬ અંકનો SMS OTP (Enter 6-digit OTP)") },
+                                placeholder = { Text("SMS કોડ દાખલ કરો") },
                                 leadingIcon = { Icon(Icons.Default.Pin, contentDescription = null, tint = RoyalMaroon) },
                                 singleLine = true,
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().testTag("reg_otp_input")
                             )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (regTimerSeconds > 0) {
+                                    Text(
+                                        text = "ફરીથી મોકલો: ${regTimerSeconds}s",
+                                        fontSize = 12.sp,
+                                        color = Color.Gray
+                                    )
+                                } else {
+                                    TextButton(
+                                        onClick = {
+                                            isSendingRegOtp = true
+                                            regOtpError = ""
+                                            viewModel.sendFirebaseOtp(
+                                                context = context,
+                                                phoneNumber = regEmail.trim(),
+                                                resendingToken = regResendToken,
+                                                onOtpSent = { verId, token ->
+                                                    regGeneratedOtp = verId
+                                                    regResendToken = token
+                                                    isSendingRegOtp = false
+                                                    regTimerSeconds = 60
+                                                    Toast.makeText(context, "નવો SMS OTP મોકલવામાં આવ્યો છે!", Toast.LENGTH_SHORT).show()
+                                                },
+                                                onInstantSuccess = {
+                                                    isRegOtpVerified = true
+                                                    isSendingRegOtp = false
+                                                },
+                                                onError = { err ->
+                                                    isSendingRegOtp = false
+                                                    regOtpError = err
+                                                    Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                                }
+                                            )
+                                        },
+                                        enabled = !isSendingRegOtp
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = RoyalMaroon)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("ફરીથી OTP મોકલો (Resend)", fontSize = 12.sp, color = RoyalMaroon, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                TextButton(
+                                    onClick = {
+                                        regOtpSent = false
+                                        regEnteredOtp = ""
+                                        regOtpError = ""
+                                    }
+                                ) {
+                                    Text("નંબર બદલો (Change Number)", fontSize = 12.sp, color = Color.Gray)
+                                }
+                            }
 
                             Button(
                                 onClick = {
-                                    if (regEnteredOtp.isNotBlank()) {
+                                    if (regEnteredOtp.trim().length == 6) {
+                                        isVerifyingRegOtp = true
+                                        regOtpError = ""
                                         viewModel.verifyFirebaseOtp(
                                             verificationId = regGeneratedOtp,
-                                            enteredCode = regEnteredOtp,
+                                            enteredCode = regEnteredOtp.trim(),
                                             onSuccess = {
                                                 isRegOtpVerified = true
+                                                isVerifyingRegOtp = false
+                                                regOtpError = ""
                                                 Toast.makeText(context, "મોબાઈલ નંબર સફળતાપૂર્વક ચકાસાયો! (Mobile verified)", Toast.LENGTH_SHORT).show()
                                             },
                                             onError = { err ->
-                                                Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                                                isVerifyingRegOtp = false
+                                                regOtpError = err
+                                                Toast.makeText(context, err, Toast.LENGTH_LONG).show()
                                             }
                                         )
                                     } else {
-                                        Toast.makeText(context, "કૃપા કરીને OTP દાખલ કરો", Toast.LENGTH_SHORT).show()
+                                        regOtpError = "કૃપા કરીને SMS માં આવેલ ૬ અંકનો OTP દાખલ કરો"
+                                        Toast.makeText(context, regOtpError, Toast.LENGTH_SHORT).show()
                                     }
                                 },
+                                enabled = !isVerifyingRegOtp,
                                 colors = ButtonDefaults.buttonColors(containerColor = VerifiedGreen),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().testTag("reg_verify_otp_button")
                             ) {
-                                Icon(Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("OTP ચકાસો (Verify OTP)")
+                                if (isVerifyingRegOtp) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("ચકાસણી ચાલુ છે...")
+                                } else {
+                                    Icon(Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("OTP ચકાસો (Verify OTP)", fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -2517,7 +2784,7 @@ fun Step3CareerAndIncome(
     }
 }
 
-// STEP 4: Family Details & AI Biodata
+// STEP 4: Family Details & AI Biodata & Mandatory Legal Agreements
 @Composable
 fun Step4FamilyAndBio(
     familyDetails: String, onFamilyDetailsChange: (String) -> Unit,
@@ -2526,7 +2793,13 @@ fun Step4FamilyAndBio(
     voiceNotesInput: String, onVoiceNotesChange: (String) -> Unit,
     isGeneratingBio: Boolean,
     onGenerateBio: () -> Unit,
-    showErrors: Boolean = false
+    agreeTerms: Boolean, onAgreeTermsChange: (Boolean) -> Unit,
+    agreePrivacy: Boolean, onAgreePrivacyChange: (Boolean) -> Unit,
+    agreeDisclaimer: Boolean, onAgreeDisclaimerChange: (Boolean) -> Unit,
+    agreeRefund: Boolean, onAgreeRefundChange: (Boolean) -> Unit,
+    onOpenPolicyUrl: (String) -> Unit,
+    showErrors: Boolean = false,
+    appLanguage: String = "gu"
 ) {
     var rashiExpanded by remember { mutableStateOf(false) }
     val rashiOptions = listOf(
@@ -2535,133 +2808,371 @@ fun Step4FamilyAndBio(
         "Dhanu", "Makara", "Kumbha", "Meena"
     )
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceCream),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceCream),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
-            Text(
-                text = "ચરણ ૪: પારિવારિક પૃષ્ઠભૂમિ અને બાયોડેટા",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = RoyalMaroon
-            )
-
-            // Single Selection Rashi Field
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
                 Text(
-                    text = "રાશિ પસંદ કરો (Select Rashi):",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = DarkMaroon
+                    text = "ચરણ ૪: પારિવારિક પૃષ્ઠભૂમિ અને બાયોડેટા",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = RoyalMaroon
                 )
 
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = if (rashi.isNotBlank()) rashi else "Mesha",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("રાશિ") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { rashiExpanded = true },
-                        trailingIcon = {
-                            IconButton(onClick = { rashiExpanded = true }) {
-                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Rashi")
-                            }
-                        }
+                // Single Selection Rashi Field
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "રાશિ પસંદ કરો (Select Rashi):",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = DarkMaroon
                     )
 
-                    DropdownMenu(
-                        expanded = rashiExpanded,
-                        onDismissRequest = { rashiExpanded = false },
-                        modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                            .background(SurfaceCream)
-                    ) {
-                        rashiOptions.forEach { item ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = item,
-                                        fontWeight = if (rashi.equals(item, ignoreCase = true)) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (rashi.equals(item, ignoreCase = true)) RoyalMaroon else Color.Unspecified
-                                    )
-                                },
-                                onClick = {
-                                    onRashiChange(item)
-                                    rashiExpanded = false
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = if (rashi.isNotBlank()) rashi else "Mesha",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("રાશિ") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { rashiExpanded = true },
+                            trailingIcon = {
+                                IconButton(onClick = { rashiExpanded = true }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Rashi")
                                 }
-                            )
-                        }
-                    }
-                }
+                            }
+                        )
 
-                Text(
-                    text = "ઝડપી પસંદગી:",
-                    fontSize = 11.sp,
-                    color = Color.Gray
-                )
-
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    rashiOptions.chunked(3).forEach { row ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        DropdownMenu(
+                            expanded = rashiExpanded,
+                            onDismissRequest = { rashiExpanded = false },
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .background(SurfaceCream)
                         ) {
-                            row.forEach { item ->
-                                FilterChip(
-                                    selected = rashi.equals(item, ignoreCase = true),
-                                    onClick = { onRashiChange(item) },
-                                    label = { Text(item, fontSize = 11.sp) },
-                                    modifier = Modifier.weight(1f),
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = RoyalMaroon,
-                                        selectedLabelColor = Color.White
-                                    )
+                            rashiOptions.forEach { item ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = item,
+                                            fontWeight = if (rashi.equals(item, ignoreCase = true)) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (rashi.equals(item, ignoreCase = true)) RoyalMaroon else Color.Unspecified
+                                        )
+                                    },
+                                    onClick = {
+                                        onRashiChange(item)
+                                        rashiExpanded = false
+                                    }
                                 )
                             }
                         }
                     }
+
+                    Text(
+                        text = "ઝડપી પસંદગી:",
+                        fontSize = 11.sp,
+                        color = Color.Gray
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        rashiOptions.chunked(3).forEach { row ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                row.forEach { item ->
+                                    FilterChip(
+                                        selected = rashi.equals(item, ignoreCase = true),
+                                        onClick = { onRashiChange(item) },
+                                        label = { Text(item, fontSize = 11.sp) },
+                                        modifier = Modifier.weight(1f),
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = RoyalMaroon,
+                                            selectedLabelColor = Color.White
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = familyDetails,
+                    onValueChange = onFamilyDetailsChange,
+                    label = { Text("કૌટુંબિક પૃષ્ઠભૂમિ અને ખેતી / વ્યવસાય *") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3,
+                    placeholder = { Text("દા.ત. સંયુક્ત પરિવાર, ૧૫ વીઘા જમીન, પિતા નિવૃત્ત અધિકારી...") },
+                    isError = showErrors && familyDetails.isBlank(),
+                    supportingText = {
+                        if (showErrors && familyDetails.isBlank()) {
+                            Text("કૌટુંબિક પૃષ્ઠભૂમિ લખવી ફરજિયાત છે", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                )
+
+                OutlinedTextField(
+                    value = aboutMe,
+                    onValueChange = onAboutMeChange,
+                    label = { Text("પોતાના વિશે પરિચય / પરિચય બ્રીફ (ટાઇપ કરો) *") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("reg_about_me_input"),
+                    placeholder = { Text("તમારા વ્યક્તિત્વ, શોખ અને અપેક્ષાઓ વિશે ટૂંકમાં લખો...") },
+                    maxLines = 5,
+                    isError = showErrors && aboutMe.isBlank(),
+                    supportingText = {
+                        if (showErrors && aboutMe.isBlank()) {
+                            Text("પોતાના વિશે પરિચય લખવો ફરજિયાત છે", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                )
+            }
+        }
+
+        // MANDATORY LEGAL POLICIES & AGREEMENT CARD
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("registration_terms_card"),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, RoyalGold),
+            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Gavel,
+                            contentDescription = null,
+                            tint = RoyalMaroon,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (appLanguage == "gu") "નિયમો, પોલિસી અને શરતોની મંજૂરી (ફરજિયાત *)" else "Legal Policies & Consent (Mandatory *)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = RoyalMaroon
+                        )
+                    }
+
+                    TextButton(
+                        onClick = {
+                            val allChecked = agreeTerms && agreePrivacy && agreeDisclaimer && agreeRefund
+                            onAgreeTermsChange(!allChecked)
+                            onAgreePrivacyChange(!allChecked)
+                            onAgreeDisclaimerChange(!allChecked)
+                            onAgreeRefundChange(!allChecked)
+                        },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = if (agreeTerms && agreePrivacy && agreeDisclaimer && agreeRefund)
+                                (if (appLanguage == "gu") "બધા અનચેક કરો" else "Deselect All")
+                            else
+                                (if (appLanguage == "gu") "બધા ટીક કરો (Select All)" else "Select All"),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = RoyalMaroon
+                        )
+                    }
+                }
+
+                Text(
+                    text = if (appLanguage == "gu")
+                        "રજીસ્ટ્રેશન ફોર્મ સબમિટ કરવા માટે નીચે આપેલી તમામ ૪ શરતો પર ટીક કરવું ફરજિયાત છે. સંબંધિત લિંક પર ક્લિક કરીને લાઈવ વેબપેજ જુઓ."
+                    else
+                        "You must tick all 4 checkboxes below before submitting registration. Click any policy link to view the official web page.",
+                    fontSize = 11.5.sp,
+                    color = Color.DarkGray,
+                    lineHeight = 16.sp
+                )
+
+                HorizontalDivider(color = RoyalGold.copy(alpha = 0.5f))
+
+                // 1. Terms & Conditions
+                PolicyCheckboxItem(
+                    checked = agreeTerms,
+                    onCheckedChange = onAgreeTermsChange,
+                    prefixText = if (appLanguage == "gu") "હું " else "I accept the ",
+                    linkText = if (appLanguage == "gu") "નિયમો અને શરતો (Terms & Conditions)" else "Terms & Conditions",
+                    suffixText = if (appLanguage == "gu") " વાંચીને સ્વીકારું છું *" else " *",
+                    onClickLink = { onOpenPolicyUrl("terms") },
+                    isError = showErrors && !agreeTerms,
+                    testTag = "reg_terms_checkbox"
+                )
+
+                // 2. Privacy Policy
+                PolicyCheckboxItem(
+                    checked = agreePrivacy,
+                    onCheckedChange = onAgreePrivacyChange,
+                    prefixText = if (appLanguage == "gu") "હું " else "I accept the ",
+                    linkText = if (appLanguage == "gu") "પ્રાઇવસી પોલિસી (Privacy Policy)" else "Privacy Policy",
+                    suffixText = if (appLanguage == "gu") " વાંચીને સ્વીકારું છું *" else " *",
+                    onClickLink = { onOpenPolicyUrl("privacy") },
+                    isError = showErrors && !agreePrivacy,
+                    testTag = "reg_privacy_checkbox"
+                )
+
+                // 3. Disclaimer
+                PolicyCheckboxItem(
+                    checked = agreeDisclaimer,
+                    onCheckedChange = onAgreeDisclaimerChange,
+                    prefixText = if (appLanguage == "gu") "હું " else "I accept the ",
+                    linkText = if (appLanguage == "gu") "ડિસ્ક્લેમર (Disclaimer)" else "Disclaimer",
+                    suffixText = if (appLanguage == "gu") " સ્વીકારું છું *" else " *",
+                    onClickLink = { onOpenPolicyUrl("disclaimer") },
+                    isError = showErrors && !agreeDisclaimer,
+                    testTag = "reg_disclaimer_checkbox"
+                )
+
+                // 4. Refund Policy
+                PolicyCheckboxItem(
+                    checked = agreeRefund,
+                    onCheckedChange = onAgreeRefundChange,
+                    prefixText = if (appLanguage == "gu") "હું " else "I accept the ",
+                    linkText = if (appLanguage == "gu") "રિફંડ અને કેન્સલેશન પોલિસી (Refund Policy)" else "Refund Policy",
+                    suffixText = if (appLanguage == "gu") " સ્વીકારું છું *" else " *",
+                    onClickLink = { onOpenPolicyUrl("refund") },
+                    isError = showErrors && !agreeRefund,
+                    testTag = "reg_refund_checkbox"
+                )
+
+                if (showErrors && (!agreeTerms || !agreePrivacy || !agreeDisclaimer || !agreeRefund)) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (appLanguage == "gu")
+                                "⚠️ સબમિટ કરવા માટે તમામ ૪ શરતો પર ટીક કરવું ફરજિયાત છે!"
+                            else
+                                "⚠️ All 4 checkboxes must be ticked to submit registration!",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
                 }
             }
+        }
+    }
+}
 
-            OutlinedTextField(
-                value = familyDetails,
-                onValueChange = onFamilyDetailsChange,
-                label = { Text("કૌટુંબિક પૃષ્ઠભૂમિ અને ખેતી / વ્યવસાય *") },
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 3,
-                placeholder = { Text("દા.ત. સંયુક્ત પરિવાર, ૧૫ વીઘા જમીન, પિતા નિવૃત્ત અધિકારી...") },
-                isError = showErrors && familyDetails.isBlank(),
-                supportingText = {
-                    if (showErrors && familyDetails.isBlank()) {
-                        Text("કૌટુંબિક પૃષ્ઠભૂમિ લખવી ફરજિયાત છે", color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            )
+@Composable
+fun PolicyCheckboxItem(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    prefixText: String,
+    linkText: String,
+    suffixText: String,
+    onClickLink: () -> Unit,
+    isError: Boolean,
+    testTag: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isError) Color(0xFFFFEBEE) else Color.Transparent)
+            .padding(vertical = 2.dp, horizontal = 4.dp)
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = CheckboxDefaults.colors(
+                checkedColor = RoyalMaroon,
+                uncheckedColor = if (isError) MaterialTheme.colorScheme.error else Color.Gray
+            ),
+            modifier = Modifier.testTag(testTag)
+        )
 
-            OutlinedTextField(
-                value = aboutMe,
-                onValueChange = onAboutMeChange,
-                label = { Text("પોતાના વિશે પરિચય / પરિચય બ્રીફ (ટાઇપ કરો) *") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("reg_about_me_input"),
-                placeholder = { Text("તમારા વ્યક્તિત્વ, શોખ અને અપેક્ષાઓ વિશે ટૂંકમાં લખો...") },
-                maxLines = 5,
-                isError = showErrors && aboutMe.isBlank(),
-                supportingText = {
-                    if (showErrors && aboutMe.isBlank()) {
-                        Text("પોતાના વિશે પરિચય લખવો ફરજિયાત છે", color = MaterialTheme.colorScheme.error)
-                    }
-                }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onCheckedChange(!checked) }
+        ) {
+            Text(
+                text = prefixText,
+                fontSize = 11.5.sp,
+                color = Color.DarkGray
             )
+            Surface(
+                color = Color(0xFFE3F2FD),
+                shape = RoundedCornerShape(4.dp),
+                modifier = Modifier.clickable { onClickLink() }
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = linkText,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1565C0),
+                        textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Icon(
+                        imageVector = Icons.Default.OpenInNew,
+                        contentDescription = "Open Web Page",
+                        tint = Color(0xFF1565C0),
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
+            Text(
+                text = suffixText,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isError) MaterialTheme.colorScheme.error else Color.DarkGray
+            )
+        }
+    }
+}
+
+private fun openPolicyPageInBrowserOrDialog(
+    context: android.content.Context,
+    policyType: String,
+    onShowDialog: (Int) -> Unit
+) {
+    val pageMap = mapOf(
+        "privacy" to Triple(0, "privacy-policy.html", "https://ais-dev-kbofivximmlj23x36jqlii-108666020810.asia-southeast1.run.app/app/src/main/assets/website/privacy-policy.html"),
+        "refund" to Triple(1, "refund-policy.html", "https://ais-dev-kbofivximmlj23x36jqlii-108666020810.asia-southeast1.run.app/app/src/main/assets/website/refund-policy.html"),
+        "terms" to Triple(2, "terms-conditions.html", "https://ais-dev-kbofivximmlj23x36jqlii-108666020810.asia-southeast1.run.app/app/src/main/assets/website/terms-conditions.html"),
+        "disclaimer" to Triple(3, "disclaimer.html", "https://ais-dev-kbofivximmlj23x36jqlii-108666020810.asia-southeast1.run.app/app/src/main/assets/website/disclaimer.html")
+    )
+    val info = pageMap[policyType]
+    if (info != null) {
+        onShowDialog(info.first)
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(info.third))
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            // fallback gracefully
         }
     }
 }
