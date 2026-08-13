@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -50,27 +50,68 @@ import java.util.Locale
 fun HomeScreen(
     viewModel: MatrimonyViewModel,
     onNavigateToProfileDetail: (String) -> Unit,
-    onNavigateToKundli: (Profile) -> Unit,
     onNavigateToChat: (String) -> Unit,
-    onNavigateToTopPicks: () -> Unit,
     onOpenFilterSheet: () -> Unit,
     onNavigateToProfileSetup: () -> Unit = {},
+    onNavigateToShortlist: () -> Unit = {},
     onNavigateToAdmin: () -> Unit = {},
+    onNavigateToSubscription: () -> Unit = {},
     onLogout: () -> Unit = {}
 ) {
     val searchGender by viewModel.searchGender.collectAsState()
     val profiles by viewModel.filteredProfiles.collectAsState()
+    val shortlistedProfiles by viewModel.shortlistedProfiles.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val selectedSubCaste by viewModel.selectedSubCaste.collectAsState()
     val selectedLocality by viewModel.selectedLocality.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val onlyAadharVerified by viewModel.onlyAadharVerified.collectAsState()
     val myProfile by viewModel.myProfile.collectAsState()
-    val top5AIPicks by viewModel.top5AIPicks.collectAsState()
     val pendingProfiles by viewModel.pendingProfiles.collectAsState()
     val isAdmin by viewModel.isAdmin.collectAsState()
+    val freeSchemeClaimedCount by viewModel.freeSchemeClaimedCount.collectAsState()
 
     val appLanguage by viewModel.appLanguage.collectAsState()
+    val isDeletingAccount by viewModel.isDeletingAccount.collectAsState()
+
+    if (isDeletingAccount) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { /* strictly wait */ },
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+        ) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCream),
+                border = androidx.compose.foundation.BorderStroke(2.dp, RoyalGold),
+                modifier = Modifier.padding(16.dp).fillMaxWidth(0.88f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(48.dp),
+                        color = Color.Red,
+                        strokeWidth = 4.dp
+                    )
+                    Text(
+                        text = if (appLanguage == "gu") "એકાઉન્ટ ડિલીટ થઈ રહ્યું છે..." else "Deleting Account...",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Color.Red,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Text(
+                        text = if (appLanguage == "gu") "કૃપા કરીને રાહ જુઓ, ફાયરબેઝમાંથી તમારો તમામ ડેટા કાયમી ધોરણે રદ થઈ રહ્યો છે." else "Please wait, all your data is being permanently deleted from Firebase.",
+                        fontSize = 12.sp,
+                        color = Color.DarkGray,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        }
+    }
     val strings = remember(appLanguage) { com.example.util.LocaleStrings.getStrings(appLanguage) }
 
     val notifications by viewModel.notifications.collectAsState()
@@ -78,6 +119,7 @@ fun HomeScreen(
     var showNotificationsSheet by remember { mutableStateOf(false) }
     var showMatchCompleteDeleteDialog by remember { mutableStateOf(false) }
     var showPolicyDialog by remember { mutableStateOf(false) }
+    var showLockedBioDataForProfile by remember { mutableStateOf<Profile?>(null) }
     var partnerNameInput by remember { mutableStateOf("") }
 
     val context = LocalContext.current
@@ -154,7 +196,7 @@ fun HomeScreen(
                         }
                     }
 
-                    if (isAdmin || myProfile.phoneContact.equals("srushtichaudhary11@gmail.com", ignoreCase = true)) {
+                    if (isAdmin || myProfile.phoneContact == "9724327777" || myProfile.phoneContact.equals("srushtichaudhary11@gmail.com", ignoreCase = true)) {
                         BadgedBox(
                             badge = {
                                 if (pendingProfiles.isNotEmpty()) {
@@ -179,13 +221,36 @@ fun HomeScreen(
 
                     if (!isAdmin) {
                         IconButton(
-                            onClick = onNavigateToTopPicks,
-                            modifier = Modifier.testTag("top_picks_button")
+                            onClick = onNavigateToShortlist,
+                            modifier = Modifier.testTag("shortlist_top_button")
+                        ) {
+                            BadgedBox(
+                                badge = {
+                                    if (shortlistedProfiles.isNotEmpty()) {
+                                        Badge(containerColor = Color.Red, contentColor = Color.White) {
+                                            Text("${shortlistedProfiles.size}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = if (shortlistedProfiles.isNotEmpty()) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                                    contentDescription = "Shortlisted Profiles",
+                                    tint = if (shortlistedProfiles.isNotEmpty()) Color.Red else RoyalMaroon
+                                )
+                            }
+                        }
+                    }
+
+                    if (!isAdmin) {
+                        IconButton(
+                            onClick = onNavigateToSubscription,
+                            modifier = Modifier.testTag("vip_subscription_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = "Top 5 AI Picks",
-                                tint = WarmSaffron
+                                imageVector = Icons.Default.WorkspacePremium,
+                                contentDescription = "VIP Subscription",
+                                tint = RoyalGold
                             )
                         }
                     }
@@ -298,48 +363,75 @@ fun HomeScreen(
                 }
             }
 
-            // Quick Match Complete & Account Delete Banner Card
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showMatchCompleteDeleteDialog = true },
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, RoyalGold),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+            // VIP Subscription Expired Banner or First 100 Free Scheme Banner
+            if (!myProfile.isVipSubscribed && myProfile.subscriptionExpiryDate.isNotBlank()) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToSubscription() }
+                            .testTag("expired_subscription_banner"),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFC62828)),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Celebration, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(26.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFC62828), modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (appLanguage == "gu") "🎉 સગાઈ/લગ્ન નક્કી થઈ ગયા? (Match Complete)" else "🎉 Match Completed?",
+                                    text = if (appLanguage == "gu") "⚠️ VIP સબ્સ્ક્રિપ્શન સમાપ્ત થઈ ગયું છે!" else "⚠️ VIP Membership Expired!",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
-                                    color = RoyalMaroon
+                                    color = Color(0xFFC62828)
                                 )
                                 Text(
-                                    text = if (appLanguage == "gu") "અહીં ક્લિક કરી તમારું એકાઉન્ટ અને બાયોડેટા ડિલીટ કરો." else "Click here to delete profile after match finalization.",
-                                    fontSize = 11.sp,
+                                    text = if (appLanguage == "gu") "સમાપ્તિ તારીખ: ${myProfile.subscriptionExpiryDate}. ૩ મહિના માટે ₹૫૯૦ માં સરળતાથી નવીનીકરણ કરવા અહીં ક્લિક કરો." else "Expired on ${myProfile.subscriptionExpiryDate}. Click to easily renew for 3 months (₹590).",
+                                    fontSize = 11.5.sp,
                                     color = Color.DarkGray
                                 )
                             }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFFC62828))
                         }
-                        Text(
-                            text = if (appLanguage == "gu") "ડિલીટ કરો" else "Delete",
-                            color = Color.Red,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(start = 4.dp)
-                        )
+                    }
+                }
+            } else if (!myProfile.isVipSubscribed && !myProfile.isFreeSchemeUsed && freeSchemeClaimedCount < 100) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToSubscription() }
+                            .testTag("free_100_scheme_banner"),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, WarmSaffron),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CardGiftcard, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(26.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (appLanguage == "gu") "🎁 પ્રથમ ૧૦૦ સભ્યો માટે ૩ મહિના મફત VIP!" else "🎁 First 100 Members 3 Months Free VIP!",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = DarkMaroon
+                                )
+                                Text(
+                                    text = if (appLanguage == "gu") "ક્લેમ થયેલ: $freeSchemeClaimedCount/૧૦૦ • હમણાં જ ફ્રી સબ્સ્ક્રિપ્શન મેળવવા અહીં ક્લિક કરો." else "Claimed: $freeSchemeClaimedCount/100 • Click to claim free 3-month VIP now.",
+                                    fontSize = 11.5.sp,
+                                    color = Color.DarkGray
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = RoyalMaroon)
+                        }
                     }
                 }
             }
@@ -471,241 +563,12 @@ fun HomeScreen(
                             }
 
                             Text(
-                                text = "સચ્ચા પારિવારિક સંસ્કારો અને ગોત્ર મર્યાદા સાથે સુયોગ્ય જીવનસાથી શોધો.",
+                                text = "સાચા પારિવારિક સંસ્કારો અને ગોત્ર મર્યાદા સાથે સુયોગ્ય જીવનસાથી શોધો.",
                                 fontSize = 12.sp,
                                 color = DarkMaroon,
                                 lineHeight = 16.sp,
                                 modifier = Modifier.padding(top = 3.dp)
                             )
-                        }
-                    }
-                }
-            }
-
-            // Top 5 AI Picks Section with Matching Algorithm Cards
-            if (!isAdmin) {
-                item {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = WarmSaffron,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "તમારા માટે શ્રેષ્ઠ 5 AI પિક્સ",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = RoyalMaroon
-                                    )
-                                )
-                            }
-
-                            TextButton(onClick = onNavigateToTopPicks) {
-                                Text("બધા જુઓ", color = RoyalMaroon, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                        }
-
-                        if (top5AIPicks.isEmpty()) {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(100.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = SoftGold)
-                            ) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("ટોપ 5 AI પસંદગીઓનું વિશ્લેષણ થઈ રહ્યું છે...", fontSize = 12.sp, color = RoyalMaroon)
-                                }
-                            }
-                        } else {
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                contentPadding = PaddingValues(vertical = 4.dp)
-                            ) {
-                                items(top5AIPicks, key = { it.profile.id }) { pick ->
-                                    Card(
-                                        modifier = Modifier
-                                            .width(260.dp)
-                                            .clickable { onNavigateToProfileDetail(pick.profile.id) }
-                                            .testTag("ai_pick_card_${pick.profile.id}"),
-                                        shape = RoundedCornerShape(18.dp),
-                                        colors = CardDefaults.cardColors(containerColor = SurfaceCream),
-                                        border = androidx.compose.foundation.BorderStroke(1.5.dp, RoyalGold),
-                                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(12.dp),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            // Top Row: Match Percentage Badge & Verified Icon
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Surface(
-                                                    color = RoyalMaroon,
-                                                    shape = RoundedCornerShape(8.dp)
-                                                ) {
-                                                    Row(
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Icon(
-                                                            Icons.Default.AutoAwesome,
-                                                            contentDescription = null,
-                                                            tint = SoftGold,
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                        Spacer(modifier = Modifier.width(4.dp))
-                                                        Text(
-                                                            text = "${pick.matchPercentage}% મિલન",
-                                                            color = SoftGold,
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 12.sp
-                                                        )
-                                                    }
-                                                }
-
-                                                if (pick.profile.isAadharVerified) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        Icon(
-                                                            Icons.Default.Verified,
-                                                            contentDescription = "Verified",
-                                                            tint = VerifiedGreen,
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
-                                                        Spacer(modifier = Modifier.width(2.dp))
-                                                        Text("પ્રમાણિત", fontSize = 10.sp, color = VerifiedGreen, fontWeight = FontWeight.Bold)
-                                                    }
-                                                }
-                                            }
-
-                                            // Candidate Summary Info with Profile Avatar
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(44.dp)
-                                                        .clip(CircleShape)
-                                                        .border(1.5.dp, RoyalGold, CircleShape)
-                                                ) {
-                                                    val pickImgUrl = pick.profile.getEffectiveProfileImageUrl()
-                                                    if (pickImgUrl.isNotBlank()) {
-                                                        AsyncImage(
-                                                            model = pickImgUrl,
-                                                            contentDescription = pick.profile.fullName,
-                                                            contentScale = ContentScale.Crop,
-                                                            placeholder = androidx.compose.ui.res.painterResource(id = R.drawable.img_matrimony_hero_1784990427738),
-                                                            error = androidx.compose.ui.res.painterResource(id = R.drawable.img_matrimony_hero_1784990427738),
-                                                            modifier = Modifier.fillMaxSize()
-                                                        )
-                                                    } else if (pick.profile.photoRes != 0) {
-                                                        androidx.compose.foundation.Image(
-                                                            painter = androidx.compose.ui.res.painterResource(id = pick.profile.photoRes),
-                                                            contentDescription = pick.profile.fullName,
-                                                            contentScale = ContentScale.Crop,
-                                                            modifier = Modifier.fillMaxSize()
-                                                        )
-                                                    } else {
-                                                        AsyncImage(
-                                                            model = R.drawable.img_matrimony_hero_1784990427738,
-                                                            contentDescription = pick.profile.fullName,
-                                                            contentScale = ContentScale.Crop,
-                                                            modifier = Modifier.fillMaxSize()
-                                                        )
-                                                    }
-                                                }
-
-                                                Spacer(modifier = Modifier.width(10.dp))
-
-                                                Column {
-                                                    Text(
-                                                        text = "${pick.profile.fullName}, ${pick.profile.age}",
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 15.sp,
-                                                        color = RoyalMaroon
-                                                    )
-
-                                                    Text(
-                                                        text = "${pick.profile.subCaste} • ગોત્ર: ${pick.profile.gotra}",
-                                                        fontSize = 12.sp,
-                                                        color = DarkMaroon,
-                                                        fontWeight = FontWeight.SemiBold
-                                                    )
-                                                }
-                                            }
-
-                                            Text(
-                                                text = "📍 ${pick.profile.currentCity} (${pick.profile.locality})",
-                                                fontSize = 11.sp,
-                                                color = Color.Gray
-                                            )
-
-                                            // Match Reasons Chips
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                            ) {
-                                                pick.matchReasons.take(2).forEach { reason ->
-                                                    Surface(
-                                                        color = SoftGold.copy(alpha = 0.8f),
-                                                        shape = RoundedCornerShape(6.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = reason,
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.Medium,
-                                                            color = RoyalMaroon,
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
-
-                                            // Action Button Row
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                OutlinedButton(
-                                                    onClick = { onNavigateToKundli(pick.profile) },
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .height(34.dp),
-                                                    contentPadding = PaddingValues(2.dp),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    border = androidx.compose.foundation.BorderStroke(1.dp, RoyalMaroon)
-                                                ) {
-                                                    Text("Kundli", fontSize = 11.sp, color = RoyalMaroon, fontWeight = FontWeight.Bold)
-                                                }
-
-                                                Button(
-                                                    onClick = { onNavigateToProfileDetail(pick.profile.id) },
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .height(34.dp),
-                                                    contentPadding = PaddingValues(2.dp),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon)
-                                                ) {
-                                                    Text("View", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -769,13 +632,20 @@ fun HomeScreen(
                 }
             } else {
                 items(profiles, key = { it.id }) { profile ->
+                    val isAccepted = viewModel.isInterestAccepted(profile.id)
+                    val isOwnProfile = profile.id == myProfile.id
                     ProfileCard(
                         profile = profile,
                         isAdmin = isAdmin,
-                        onCardClick = { onNavigateToProfileDetail(profile.id) },
+                        onCardClick = {
+                            if (isAdmin || isOwnProfile || isAccepted) {
+                                onNavigateToProfileDetail(profile.id)
+                            } else {
+                                showLockedBioDataForProfile = profile
+                            }
+                        },
                         onSendInterest = { viewModel.sendInterest(profile.id) },
                         onToggleShortlist = { viewModel.toggleShortlist(profile.id, profile.isShortlisted) },
-                        onKundliClick = { onNavigateToKundli(profile) },
                         onChatClick = { onNavigateToChat(profile.id) }
                     )
                 }
@@ -818,6 +688,10 @@ fun HomeScreen(
     }
 
     if (showMatchCompleteDeleteDialog) {
+        var selectedOption by remember { mutableStateOf(0) } // 0: Match Found, 1: Other Reason
+        var partnerNameInput by remember { mutableStateOf("") }
+        var otherReasonInput by remember { mutableStateOf("") }
+
         AlertDialog(
             onDismissRequest = { showMatchCompleteDeleteDialog = false },
             icon = {
@@ -825,7 +699,7 @@ fun HomeScreen(
             },
             title = {
                 Text(
-                    text = if (appLanguage == "gu") "સગાઈ/લગ્ન નક્કી થવા પર એકાઉન્ટ ડિલીટ કરો" else "Delete Account - Match Completed",
+                    text = if (appLanguage == "gu") "એકાઉન્ટ ડિલીટ કરો (Delete Account)" else "Delete Account",
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
                     color = RoyalMaroon
@@ -835,33 +709,98 @@ fun HomeScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = if (appLanguage == "gu")
-                            "હાર્દિક અભિનંદન! જો તમારું સગાઈ કે લગ્ન નક્કી થઈ ગયું હોય, તો તમારું એકાઉન્ટ ડિલીટ કરવાથી તમારી પ્રોફાઇલ, બાયોડેટા અને તમામ ફોટા ચૌધરી મેટ્રિમોની પોર્ટલ પરથી કાયમી ધોરણે રદ થઈ જશે જેથી અન્ય સભ્યો તમને કોલ કે રિક્વેસ્ટ ન મોકલે."
+                            "એકાઉન્ટ ડિલીટ કરવા માટેનું કારણ પસંદ કરો:"
                         else
-                            "Congratulations on finding your match! Deleting your account will permanently remove your profile, bio-data, and photos from the portal so you no longer receive proposals.",
+                            "Select reason for deleting your account:",
                         fontSize = 13.sp,
-                        color = Color.DarkGray
+                        fontWeight = FontWeight.Bold,
+                        color = RoyalMaroon
                     )
 
-                    OutlinedTextField(
-                        value = partnerNameInput,
-                        onValueChange = { partnerNameInput = it },
-                        label = { Text(if (appLanguage == "gu") "જીવનસાથીનું નામ (ઓપ્શનલ)" else "Partner Name (Optional)") },
-                        placeholder = { Text("જેમ કે: રમેશભાઈ ચૌધરી") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    // Option 1: Match Found
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { selectedOption = 0 }
+                            .padding(vertical = 2.dp)
+                    ) {
+                        RadioButton(
+                            selected = (selectedOption == 0),
+                            onClick = { selectedOption = 0 },
+                            colors = RadioButtonDefaults.colors(selectedColor = RoyalMaroon)
+                        )
+                        Text(
+                            text = if (appLanguage == "gu") "1) સગાઈ/લગ્ન નક્કી થઈ ગયા (Match Found)" else "1) Match Found",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.DarkGray
+                        )
+                    }
+
+                    if (selectedOption == 0) {
+                        OutlinedTextField(
+                            value = partnerNameInput,
+                            onValueChange = { partnerNameInput = it },
+                            label = { Text(if (appLanguage == "gu") "જીવનસાથીનું નામ (ઓપ્શનલ)" else "Partner Name (Optional)") },
+                            placeholder = { Text("જેમ કે: રમેશભાઈ ચૌધરી") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp)
+                        )
+                    }
+
+                    // Option 2: Other Reason
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { selectedOption = 1 }
+                            .padding(vertical = 2.dp)
+                    ) {
+                        RadioButton(
+                            selected = (selectedOption == 1),
+                            onClick = { selectedOption = 1 },
+                            colors = RadioButtonDefaults.colors(selectedColor = RoyalMaroon)
+                        )
+                        Text(
+                            text = if (appLanguage == "gu") "2) અન્ય કારણ (Other Reason)" else "2) Other Reason",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.DarkGray
+                        )
+                    }
+
+                    if (selectedOption == 1) {
+                        OutlinedTextField(
+                            value = otherReasonInput,
+                            onValueChange = { otherReasonInput = it },
+                            label = { Text(if (appLanguage == "gu") "ડિલીટ કરવાનું કારણ (ઓપ્શનલ)" else "Reason for Deletion (Optional)") },
+                            placeholder = { Text(if (appLanguage == "gu") "જેમ કે: સમય અભાવ / અન્ય" else "e.g. Other reason") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp)
+                        )
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         showMatchCompleteDeleteDialog = false
+                        val finalPartnerName = if (selectedOption == 0) partnerNameInput.trim() else ""
+                        val finalReason = if (selectedOption == 0) "Match Found / Got Married" else otherReasonInput.ifBlank { "Other Reason" }
                         viewModel.deleteAccountOnMatchComplete(
-                            partnerName = partnerNameInput,
+                            partnerName = finalPartnerName,
+                            reason = finalReason,
                             onSuccess = {
                                 android.widget.Toast.makeText(
                                     context,
-                                    if (appLanguage == "gu") "અભિનંદન! તમારું એકાઉન્ટ સફળતાપૂર્વક ડિલીટ કરાયું છે. સુખી દામ્પત્ય જીવનની શુભકામનાઓ!" else "Congratulations! Your account has been deleted. Wish you a happy married life!",
+                                    if (appLanguage == "gu") "તમારું એકાઉન્ટ સફળતાપૂર્વક ડિલીટ કરાયું છે." else "Your account has been deleted successfully.",
                                     android.widget.Toast.LENGTH_LONG
                                 ).show()
                             },
@@ -889,9 +828,9 @@ fun HomeScreen(
         var selectedTab by remember { mutableStateOf(0) }
         val policies = listOf(
             Triple(if (appLanguage == "gu") "પ્રાઇવસી પોલિસી" else "Privacy Policy", Icons.Default.Security,
-                "Chaudhary Vivah Privacy Policy:\n\n1. Information Collection: We collect bio-data, Gothra details, contact info, and optional Aadhar ID strictly for matrimonial verification within Chaudhary community.\n\n2. Data Usage: Used solely for Gothra exogamy validation, 36-Guna Kundli matching, and profile discovery.\n\n3. Match Complete Deletion: You can permanently delete your profile, bio-data, and photos with 1-click once your match is finalized.\n\n4. Contact Support: srushtichaudhary11@gmail.com"),
+                "Chaudhary Vivah Privacy Policy:\n\n1. Information Collection: We collect bio-data, Gothra details, contact info, and optional Aadhar ID strictly for matrimonial verification within Chaudhary community.\n\n2. Data Usage: Used solely for Gothra exogamy validation, 36-Guna Kundli matching, and profile discovery.\n\n3. Match Complete Deletion: You can permanently delete your profile, bio-data, and photos with 1-click once your match is finalized.\n\n4. Contact Support: info@chaudharyvivah.in | 9016607483"),
             Triple(if (appLanguage == "gu") "રિફંડ પોલિસી" else "Refund Policy", Icons.Default.Payments,
-                "Chaudhary Vivah Refund & Cancellation Policy:\n\n1. 7-Day Refund Window: Full refund for unutilized paid subscriptions before viewing contact details or profile rejection.\n\n2. Non-Refundable: Once contact phone numbers are unlocked or after match completion account deletion.\n\n3. Processing Time: Approved refunds credited back within 5 to 7 business days to original payment method.\n\n4. Contact Support: srushtichaudhary11@gmail.com"),
+                "Chaudhary Vivah Refund & Cancellation Policy:\n\n1. 7-Day Refund Window: Full refund for unutilized paid subscriptions before viewing contact details or profile rejection.\n\n2. Non-Refundable: Once contact phone numbers are unlocked or after match completion account deletion.\n\n3. Processing Time: Approved refunds credited back within 5 to 7 business days to original payment method.\n\n4. Contact Support: info@chaudharyvivah.in | 9016607483"),
             Triple(if (appLanguage == "gu") "નિયમો અને શરતો" else "Terms & Conditions", Icons.Default.Gavel,
                 "Chaudhary Vivah Terms & Conditions:\n\n1. Legal Marriageable Age: Minimum 18 years for females and 21 years for males under Indian Marriage Act.\n\n2. Verified Chaudhary Profiles: Exclusive platform for Chaudhary community families.\n\n3. Authenticity: Submitting false bio-data or fake documents is prohibited.\n\n4. Admin Verification: All profiles undergo manual admin approval before public discovery."),
             Triple(if (appLanguage == "gu") "ડિસ્ક્લેમર" else "Disclaimer", Icons.Default.Info,
@@ -967,6 +906,96 @@ fun HomeScreen(
             }
         )
     }
+
+    showLockedBioDataForProfile?.let { targetProfile ->
+        val isInterestSent = targetProfile.interestStatus == "SENT" || targetProfile.interestStatus == "ACCEPTED"
+        AlertDialog(
+            onDismissRequest = { showLockedBioDataForProfile = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = RoyalMaroon,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "સંપૂર્ણ બાયોડેટા લોક છે (Bio-Data Locked)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = RoyalMaroon,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "ચૌધરી વિવાહ પર ગોપનીયતા અને મર્યાદા જાળવવા માટે, ${targetProfile.fullName} નો સંપૂર્ણ બાયોડેટા અને વિગતો ફક્ત ત્યારે જ જોઈ શકાશે જ્યારે સામેના સભ્ય તમારો 'રસ/પ્રસ્તાવ (Interest Request)' સ્વીકારશે.",
+                        fontSize = 13.sp,
+                        color = Color.DarkGray,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (isInterestSent) {
+                        Surface(
+                            color = VerifiedGreenContainer,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "✓ તમે આ સભ્યને લગ્ન પ્રસ્તાવ મોકલેલ છે. સામે પક્ષ દ્વારા સ્વીકાર થયા પછી સંપૂર્ણ પ્રોફાઇલ અનલોક થશે.",
+                                fontSize = 12.sp,
+                                color = VerifiedGreen,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(10.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "કૃપા કરીને નીચે આપેલ બટન પર ક્લિક કરી પ્રથમ રસ દાખવો/પ્રસ્તાવ મોકલો.",
+                            fontSize = 12.sp,
+                            color = RoyalMaroon,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                if (!isInterestSent) {
+                    Button(
+                        onClick = {
+                            viewModel.sendInterest(targetProfile.id)
+                            showLockedBioDataForProfile = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("રસ દાખવો (Send Interest)", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                } else {
+                    Button(
+                        onClick = { showLockedBioDataForProfile = null },
+                        colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon)
+                    ) {
+                        Text("સમજાયું (OK)", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLockedBioDataForProfile = null }) {
+                    Text("બંધ કરો (Close)", color = Color.Gray)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -976,7 +1005,6 @@ fun ProfileCard(
     onCardClick: () -> Unit,
     onSendInterest: () -> Unit,
     onToggleShortlist: () -> Unit,
-    onKundliClick: () -> Unit,
     onChatClick: () -> Unit
 ) {
     Card(
@@ -986,7 +1014,8 @@ fun ProfileCard(
             .testTag("profile_card_${profile.id}"),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderLightGold),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -994,7 +1023,7 @@ fun ProfileCard(
             Row(
                 verticalAlignment = Alignment.Top
             ) {
-                // Profile Avatar with Cultural Border
+                // 1. Profile Avatar / Photo
                 Box(
                     modifier = Modifier
                         .size(80.dp)
@@ -1038,66 +1067,52 @@ fun ProfileCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = profile.fullName,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = RoyalMaroon
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        IconButton(
-                            onClick = onToggleShortlist,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (profile.isShortlisted) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                                contentDescription = "Shortlist",
-                                tint = if (profile.isShortlisted) Color.Red else Color.Gray
+                        // 2. Name
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = profile.fullName.ifBlank { "Unregistered User" },
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = RoyalMaroon
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
+                            if (profile.profileId.isNotBlank()) {
+                                Text(
+                                    text = "ID: ${profile.profileId}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = RoyalMaroon.copy(alpha = 0.8f)
+                                )
+                            }
                         }
-                    }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "${profile.age} વર્ષ, ${profile.height}",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-
-                        if (profile.isAadharVerified) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                color = VerifiedGreenContainer,
-                                shape = RoundedCornerShape(6.dp)
+                        if (!isAdmin) {
+                            IconButton(
+                                onClick = onToggleShortlist,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("shortlist_button_${profile.id}")
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Verified,
-                                        contentDescription = null,
-                                        tint = VerifiedGreen,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("આધાર પ્રમાણિત", fontSize = 10.sp, color = VerifiedGreen, fontWeight = FontWeight.Bold)
-                                }
+                                Icon(
+                                    imageVector = if (profile.isShortlisted) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                                    contentDescription = "Shortlist",
+                                    tint = if (profile.isShortlisted) Color.Red else Color.Gray,
+                                    modifier = Modifier.size(24.dp)
+                                )
                             }
                         }
                     }
 
-                    // Sub-caste & Gotra Tag
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // 3. Age
                     Text(
-                        text = "${profile.subCaste} • ગોત્ર: ${profile.gotra}",
-                        fontSize = 12.sp,
-                        color = WarmSaffron,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 2.dp)
+                        text = "ઉંમર: ${if (profile.age > 0) "${profile.age} વર્ષ" else "દર્શાવેલ નથી"}",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        color = Color.DarkGray
                     )
                 }
             }
@@ -1106,7 +1121,7 @@ fun ProfileCard(
             HorizontalDivider(color = Color.LightGray.copy(alpha = 0.4f))
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Cultural Key Details Grid
+            // 4. Native Village (મૂળ વતન) & 6. Current City
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -1114,18 +1129,19 @@ fun ProfileCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = "મૂળ વતન (ગામ):", fontSize = 10.sp, color = Color.Gray)
                     Text(
-                        text = profile.nativeVillage,
+                        text = profile.nativeVillage.ifBlank { "દર્શાવેલ નથી" },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
+                        color = Color.Black,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "મોસાળ (માતાનું વતન):", fontSize = 10.sp, color = Color.Gray)
+                    Text(text = "હાલનું શહેર:", fontSize = 10.sp, color = Color.Gray)
                     Text(
-                        text = profile.motherBirthVillage,
+                        text = profile.currentCity.ifBlank { "દર્શાવેલ નથી" },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = RoyalMaroon,
@@ -1137,27 +1153,15 @@ fun ProfileCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "વ્યવસાય અને આવક:", fontSize = 10.sp, color = Color.Gray)
+            // 5. Business / Occupation
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(text = "વ્યવસાય / નોકરી:", fontSize = 10.sp, color = Color.Gray)
                     Text(
-                        text = "${profile.occupation} (${profile.monthlyIncome})",
+                        text = profile.occupation.ifBlank { "દર્શાવેલ નથી" },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Column(modifier = Modifier.weight(0.8f)) {
-                    Text(text = "હાલનું સ્થળ:", fontSize = 10.sp, color = Color.Gray)
-                    Text(
-                        text = profile.currentCity,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        color = Color.Black,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1171,52 +1175,47 @@ fun ProfileCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // View Full Profile Button
+                Button(
+                    onClick = onCardClick,
+                    modifier = Modifier.weight(1.2f),
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "સંપૂર્ણ પ્રોફાઇલ જુઓ",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
                 if (!isAdmin) {
-                    // Swaagat (Send Interest) Button
-                    Button(
+                    // Send Interest Button
+                    OutlinedButton(
                         onClick = onSendInterest,
-                        modifier = Modifier.weight(1.2f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (profile.interestStatus == "SENT") VerifiedGreen else RoyalMaroon
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (profile.interestStatus == "SENT") VerifiedGreen else RoyalMaroon
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (profile.interestStatus == "SENT") VerifiedGreen else RoyalMaroon
                         ),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Icon(
-                            imageVector = if (profile.interestStatus == "SENT") Icons.Default.CheckCircle else Icons.Default.Send,
+                            imageVector = if (profile.interestStatus == "SENT") Icons.Default.CheckCircle else Icons.AutoMirrored.Filled.Send,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
-                            text = if (profile.interestStatus == "SENT") "પ્રસ્તાવ મોકલ્યો" else "રસ દાખવો (સ્વાગત)",
-                            fontSize = 12.sp,
+                            text = if (profile.interestStatus == "SENT") "મોકલેલ" else "રસ દાખવો",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
-                    }
-
-                    // AI Kundli Button
-                    OutlinedButton(
-                        onClick = onKundliClick,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = WarmSaffron),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, WarmSaffron)
-                    ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("કુંડળી", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    // View Profile Button for Admin
-                    Button(
-                        onClick = onCardClick,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("પ્રોફાઇલ જુઓ", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -1227,7 +1226,7 @@ fun ProfileCard(
                         .size(40.dp)
                         .background(SoftGold, RoundedCornerShape(10.dp))
                 ) {
-                    Icon(Icons.Default.Chat, contentDescription = "Chat", tint = RoyalMaroon)
+                    Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Chat", tint = RoyalMaroon)
                 }
             }
         }
@@ -1328,7 +1327,7 @@ fun NotificationItemRow(
     onClick: () -> Unit
 ) {
     val (icon, iconTint, bgGradient) = when (notification.type) {
-        "CHAT" -> Triple(Icons.Default.Chat, WarmSaffron, SoftGold)
+        "CHAT" -> Triple(Icons.AutoMirrored.Filled.Chat, WarmSaffron, SoftGold)
         "INTEREST" -> Triple(Icons.Default.Favorite, RoyalMaroon, LightRoseContainer)
         "LOGIN_ALERT" -> Triple(Icons.Default.Devices, DarkMaroon, SoftGold)
         else -> Triple(Icons.Default.Info, RoyalMaroon, SurfaceCream)

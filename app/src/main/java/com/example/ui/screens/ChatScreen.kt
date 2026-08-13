@@ -10,7 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -45,7 +45,7 @@ fun ChatScreen(
     val myId = myProfile.id.ifBlank { authUid ?: "USER_ME" }
     val chatRoomId = remember(myId, profileId) { if (myId < profileId) "${myId}_${profileId}" else "${profileId}_${myId}" }
 
-    val chatMessagesFlow = remember(chatRoomId) { viewModel.repository.getChatMessages(chatRoomId) }
+    val chatMessagesFlow = remember(chatRoomId, myId, profileId) { viewModel.repository.getChatMessages(chatRoomId, myId, profileId) }
     val messages by chatMessagesFlow.collectAsState(initial = emptyList())
 
     val userInterests by viewModel.userInterests.collectAsState(initial = emptyList())
@@ -56,8 +56,63 @@ fun ChatScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showBlockDialog by remember { mutableStateOf(false) }
     var showClearChatDialog by remember { mutableStateOf(false) }
+    var showVoiceRecordDialog by remember { mutableStateOf(false) }
+    var isRecordingVoice by remember { mutableStateOf(false) }
+    var recordingDurationSec by remember { mutableStateOf(0) }
+    var playingMessageId by remember { mutableStateOf<String?>(null) }
+    var playbackProgressSec by remember { mutableStateOf(0) }
     var msgToDeleteId by remember { mutableStateOf<String?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Set active chat partner ID for FCM notification suppression while actively chatting
+    DisposableEffect(profileId) {
+        com.example.service.NotificationHelper.activeChatPartnerId = profileId
+        onDispose {
+            if (com.example.service.NotificationHelper.activeChatPartnerId == profileId) {
+                com.example.service.NotificationHelper.activeChatPartnerId = null
+            }
+        }
+    }
+
+    // TextToSpeech Engine for Voice Note Playback
+    var ttsEngine by remember { mutableStateOf<android.speech.tts.TextToSpeech?>(null) }
+    LaunchedEffect(Unit) {
+        ttsEngine = android.speech.tts.TextToSpeech(context) { status ->
+            if (status == android.speech.tts.TextToSpeech.SUCCESS) {
+                ttsEngine?.language = java.util.Locale("gu", "IN")
+            }
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            ttsEngine?.stop()
+            ttsEngine?.shutdown()
+        }
+    }
+
+    // Timer effect for voice note playback progress
+    LaunchedEffect(playingMessageId) {
+        if (playingMessageId != null) {
+            playbackProgressSec = 0
+            while (playingMessageId != null && playbackProgressSec < 6) {
+                kotlinx.coroutines.delay(1000)
+                playbackProgressSec++
+            }
+            playingMessageId = null
+            playbackProgressSec = 0
+        }
+    }
+
+    // Timer effect for active voice recording
+    LaunchedEffect(isRecordingVoice) {
+        if (isRecordingVoice) {
+            recordingDurationSec = 0
+            while (isRecordingVoice && recordingDurationSec < 15) {
+                kotlinx.coroutines.delay(1000)
+                recordingDurationSec++
+            }
+        }
+    }
 
     val icebreakers = listOf(
         "જય શ્રી કૃષ્ણા! / રામ રામ જી",
@@ -219,9 +274,27 @@ fun ChatScreen(
                 }
 
                 items(messages) { msg ->
+                    val isPlayingThis = playingMessageId == msg.id
                     ChatBubble(
                         message = msg,
                         myId = myId,
+                        isPlaying = isPlayingThis,
+                        progressSec = if (isPlayingThis) playbackProgressSec else 0,
+                        onPlayToggle = {
+                            if (playingMessageId == msg.id) {
+                                playingMessageId = null
+                                ttsEngine?.stop()
+                            } else {
+                                playingMessageId = msg.id
+                                val textToSpeak = msg.text.replace("🎙️", "").replace("[", "").replace("]", "").trim()
+                                ttsEngine?.speak(
+                                    if (textToSpeak.isNotBlank()) textToSpeak else "ચૌધરી વિવાહ પરિવાર નમસ્તે",
+                                    android.speech.tts.TextToSpeech.QUEUE_FLUSH,
+                                    null,
+                                    msg.id
+                                )
+                            }
+                        },
                         onDeleteClick = { msgToDeleteId = msg.id }
                     )
                 }
@@ -344,7 +417,11 @@ fun ChatScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
-                            onClick = { viewModel.sendChatMessage(profileId, "🎙️ [વોઇસ મેસેજ મોકલ્યો]", isVoice = true) }
+                            onClick = {
+                                showVoiceRecordDialog = true
+                                isRecordingVoice = true
+                                recordingDurationSec = 0
+                            }
                         ) {
                             Icon(Icons.Default.Mic, contentDescription = "વોઇસ ઇનપુટ", tint = WarmSaffron)
                         }
@@ -375,7 +452,7 @@ fun ChatScreen(
                                 .background(RoyalMaroon, CircleShape)
                                 .testTag("chat_send_button")
                         ) {
-                            Icon(Icons.Default.Send, contentDescription = "Send", tint = Color.White)
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.White)
                         }
                     }
                 }
@@ -454,6 +531,80 @@ fun ChatScreen(
         )
     }
 
+    if (showVoiceRecordDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showVoiceRecordDialog = false
+                isRecordingVoice = false
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Mic, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("વોઇસ મેસેજ રેકોર્ડિંગ", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = RoyalMaroon)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.GraphicEq,
+                        contentDescription = null,
+                        tint = WarmSaffron,
+                        modifier = Modifier.size(54.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "વોઇસ સંદેશ રેકોર્ડ થઈ રહ્યો છે...",
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                        color = Color.DarkGray
+                    )
+                    Text(
+                        text = "0:${recordingDurationSec.toString().padStart(2, '0')} / 0:15 સેકન્ડ",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = RoyalMaroon,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val duration = if (recordingDurationSec > 0) recordingDurationSec else 6
+                        viewModel.sendChatMessage(
+                            profileId = profileId,
+                            text = "🎙️ વોઇસ મેસેજ (0:${duration.toString().padStart(2, '0')} સેકન્ડ)",
+                            isVoice = true,
+                            audioUrl = "voice_note_${System.currentTimeMillis()}.mp3"
+                        )
+                        showVoiceRecordDialog = false
+                        isRecordingVoice = false
+                        android.widget.Toast.makeText(context, "વોઇસ મેસેજ મોકલાયો!", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("મોકલો")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showVoiceRecordDialog = false
+                        isRecordingVoice = false
+                    }
+                ) {
+                    Text("રદ કરો")
+                }
+            }
+        )
+    }
+
     if (msgToDeleteId != null) {
         val targetMsgId = msgToDeleteId!!
         AlertDialog(
@@ -489,6 +640,9 @@ fun ChatScreen(
 fun ChatBubble(
     message: ChatMessage,
     myId: String,
+    isPlaying: Boolean = false,
+    progressSec: Int = 0,
+    onPlayToggle: () -> Unit = {},
     onDeleteClick: () -> Unit
 ) {
     val authUid = com.example.service.FirebaseAuthService.currentUser?.uid
@@ -528,10 +682,47 @@ fun ChatBubble(
         ) {
             Column(modifier = Modifier.padding(10.dp)) {
                 if (message.isVoiceNote) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = RoyalMaroon)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Voice Note (0:06 sec)", color = textColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        IconButton(
+                            onClick = onPlayToggle,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(RoyalMaroon, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "Pause Voice Note" else "Play Voice Note",
+                                tint = SoftGold,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.GraphicEq,
+                                    contentDescription = null,
+                                    tint = if (isPlaying) WarmSaffron else Color.Gray,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isPlaying) "પ્લે થઈ રહ્યું છે..." else "વોઇસ સંદેશ",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = RoyalMaroon
+                                )
+                            }
+                            val durationSec = if (message.voiceDurationSec > 0) message.voiceDurationSec else 6
+                            Text(
+                                text = if (isPlaying) "0:0$progressSec / 0:0$durationSec" else "સંદેશ સાંભળવા ટચ કરો (0:0$durationSec)",
+                                fontSize = 11.sp,
+                                color = Color.DarkGray
+                            )
+                        }
                     }
                 } else {
                     Text(

@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,8 +45,14 @@ fun AuthScreen(
     var emailInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var otpInput by remember { mutableStateOf("") }
+    var isOtpSent by remember { mutableStateOf(false) }
+    var verificationIdState by remember { mutableStateOf("") }
+    var resendingTokenState by remember { mutableStateOf<com.google.firebase.auth.PhoneAuthProvider.ForceResendingToken?>(null) }
     var authError by remember { mutableStateOf("") }
     var showForgotPasswordDialog by remember { mutableStateOf(false) }
+    var showNoInternetDialog by remember { mutableStateOf(false) }
+    var showNotRegisteredDialog by remember { mutableStateOf(false) }
 
     val appLanguage by viewModel.appLanguage.collectAsState()
     val strings = remember(appLanguage) { com.example.util.LocaleStrings.getStrings(appLanguage) }
@@ -62,13 +69,15 @@ fun AuthScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundGradient)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+        contentAlignment = Alignment.TopCenter
     ) {
         val scrollState = rememberScrollState()
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .widthIn(max = 520.dp)
                 .navigationBarsPadding()
                 .imePadding()
                 .verticalScroll(scrollState)
@@ -196,6 +205,7 @@ fun AuthScreen(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
                 ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderLightGold),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
                 Column(
@@ -213,7 +223,7 @@ fun AuthScreen(
                     )
 
                     Text(
-                        text = "નોંધાયેલ સભ્યો અહીં મોબાઈલ નંબર અને પાસવર્ડથી લૉગિન કરો",
+                        text = if (!isOtpSent) "નોંધાયેલ સભ્યો અહીં મોબાઈલ નંબરથી લૉગિન કરો" else "તમારા મોબાઈલ પર મોકલેલ ૬ અંકનો OTP દાખલ કરો",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color.Gray,
                             fontSize = 12.sp
@@ -244,12 +254,27 @@ fun AuthScreen(
                     OutlinedTextField(
                         value = emailInput,
                         onValueChange = {
-                            emailInput = it
-                            authError = ""
+                            if (!isOtpSent) {
+                                emailInput = it.filter { char -> char.isDigit() }.take(10)
+                                authError = ""
+                            }
                         },
+                        enabled = !isOtpSent && !isAuthenticating,
                         label = { Text("મોબાઈલ નંબર (10 Digit Mobile Number)") },
                         placeholder = { Text("૧૦ અંકનો મોબાઈલ નંબર દાખલ કરો") },
                         leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = RoyalMaroon) },
+                        trailingIcon = {
+                            if (isOtpSent) {
+                                TextButton(onClick = {
+                                    isOtpSent = false
+                                    otpInput = ""
+                                    verificationIdState = ""
+                                    authError = ""
+                                }) {
+                                    Text("બદલો (Change)", fontSize = 12.sp, color = RoyalMaroon)
+                                }
+                            }
+                        },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         modifier = Modifier
@@ -257,63 +282,129 @@ fun AuthScreen(
                             .testTag("email_input")
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    if (isOtpSent) {
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                    OutlinedTextField(
-                        value = passwordInput,
-                        onValueChange = {
-                            passwordInput = it
-                            authError = ""
-                        },
-                        label = { Text("પાસવર્ડ (Password)") },
-                        placeholder = { Text("તમારો પાસવર્ડ લખો") },
-                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = RoyalMaroon) },
-                        trailingIcon = {
-                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(
-                                    imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                    contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                        OutlinedTextField(
+                            value = otpInput,
+                            onValueChange = {
+                                otpInput = it.filter { char -> char.isDigit() }.take(6)
+                                authError = ""
+                            },
+                            enabled = !isAuthenticating,
+                            label = { Text("૬ અંકનો OTP (Enter 6-digit OTP)") },
+                            placeholder = { Text("SMS માં આવેલ OTP લખો") },
+                            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = RoyalMaroon) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("otp_input")
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    if (emailInput.length == 10 && !isAuthenticating) {
+                                        authError = ""
+                                        viewModel.sendFirebaseOtp(
+                                            context = context,
+                                            phoneNumber = emailInput.trim(),
+                                            resendingToken = resendingTokenState,
+                                            onOtpSent = { vId, resendToken ->
+                                                verificationIdState = vId
+                                                resendingTokenState = resendToken
+                                                android.widget.Toast.makeText(context, "OTP ફરીથી મોકલવામાં આવ્યો છે", android.widget.Toast.LENGTH_SHORT).show()
+                                            },
+                                            onInstantSuccess = {
+                                                viewModel.verifyMobileAndSignInOnServer(
+                                                    mobileOrEmail = emailInput.trim(),
+                                                    pass = "",
+                                                    role = "Bride",
+                                                    context = context,
+                                                    onError = { authError = it },
+                                                    onNoInternet = { showNoInternetDialog = true },
+                                                    onNotRegistered = { showNotRegisteredDialog = true },
+                                                    onSuccess = { onLoginSuccess("Bride", false) }
+                                                )
+                                            },
+                                            onError = { authError = it }
+                                        )
+                                    }
+                                },
+                                enabled = !isAuthenticating
+                            ) {
+                                Text(
+                                    text = "ફરીથી OTP મોકલો (Resend OTP)",
+                                    color = RoyalMaroon,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
-                        },
-                        singleLine = true,
-                        visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("password_input")
-                    )
-
-                    // Forgot Password Button Link
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(onClick = { showForgotPasswordDialog = true }) {
-                            Text(
-                                text = "પાસવર્ડ ભૂલી ગયા છો? (Forgot Password?)",
-                                color = RoyalMaroon,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Registered User Login Button
+                    // Registered User OTP Login Button
                     Button(
                         onClick = {
-                            if (emailInput.isNotBlank() && passwordInput.length >= 6) {
+                            val cleanMobile = emailInput.trim()
+                            if (cleanMobile.length != 10) {
+                                authError = "કૃપા કરીને ૧૦ અંકનો સાચો મોબાઈલ નંબર દાખલ કરો."
+                                return@Button
+                            }
+
+                            if (!isOtpSent) {
                                 authError = ""
-                                viewModel.signInWithEmail(
-                                    email = emailInput.trim(),
-                                    pass = passwordInput.trim(),
-                                    role = "Bride",
-                                    onError = { authError = it },
-                                    onSuccess = { isNewUser -> onLoginSuccess("Bride", false) }
+                                viewModel.sendFirebaseOtp(
+                                    context = context,
+                                    phoneNumber = cleanMobile,
+                                    onOtpSent = { vId, resendToken ->
+                                        isOtpSent = true
+                                        verificationIdState = vId
+                                        resendingTokenState = resendToken
+                                    },
+                                    onInstantSuccess = {
+                                        viewModel.verifyMobileAndSignInOnServer(
+                                            mobileOrEmail = cleanMobile,
+                                            pass = "",
+                                            role = "Bride",
+                                            context = context,
+                                            onError = { authError = it },
+                                            onNoInternet = { showNoInternetDialog = true },
+                                            onNotRegistered = { showNotRegisteredDialog = true },
+                                            onSuccess = { onLoginSuccess("Bride", false) }
+                                        )
+                                    },
+                                    onError = { authError = it }
                                 )
                             } else {
-                                authError = "કૃપા કરીને ૧૦ અંકનો મોબાઈલ નંબર અને ઓછામાં ઓછો ૬ અંકનો પાસવર્ડ લખો"
+                                if (otpInput.length != 6) {
+                                    authError = "કૃપા કરીને ૬ અંકનો સાચો OTP દાખલ કરો."
+                                    return@Button
+                                }
+                                authError = ""
+                                viewModel.verifyFirebaseOtp(
+                                    verificationId = verificationIdState,
+                                    enteredCode = otpInput.trim(),
+                                    onSuccess = {
+                                        viewModel.verifyMobileAndSignInOnServer(
+                                            mobileOrEmail = cleanMobile,
+                                            pass = "",
+                                            role = "Bride",
+                                            context = context,
+                                            onError = { authError = it },
+                                            onNoInternet = { showNoInternetDialog = true },
+                                            onNotRegistered = { showNotRegisteredDialog = true },
+                                            onSuccess = { onLoginSuccess("Bride", false) }
+                                        )
+                                    },
+                                    onError = { authError = it }
+                                )
                             }
                         },
                         enabled = !isAuthenticating,
@@ -331,11 +422,11 @@ fun AuthScreen(
                                 strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("લૉગિન થઈ રહ્યું છે...", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text(if (!isOtpSent) "OTP મોકલાઈ રહ્યો છે..." else "ચકાસણી થઈ રહી છે...", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         } else {
-                            Icon(Icons.Default.Login, contentDescription = null)
+                            Icon(if (!isOtpSent) Icons.Default.Sms else Icons.AutoMirrored.Filled.Login, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("લૉગિન કરો (Login)", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text(if (!isOtpSent) "OTP મોકલો (Send OTP)" else "ચકાસો અને લૉગિન કરો (Verify & Login)", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -404,6 +495,150 @@ fun AuthScreen(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Clickable Customer Support Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("login_support_card"),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = SurfaceCream
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, RoyalGold)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SupportAgent,
+                            contentDescription = null,
+                            tint = RoyalMaroon,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "મદદ અને સહાયતા (Help & Support)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = RoyalMaroon
+                        )
+                    }
+
+                    Text(
+                        text = "કોઈપણ સમસ્યા અથવા સપોર્ટ માટે નીચેના ઈમેલ અથવા મોબાઈલ પર ક્લિક કરો:",
+                        fontSize = 11.5.sp,
+                        color = Color.DarkGray,
+                        textAlign = TextAlign.Center
+                    )
+
+                    HorizontalDivider(color = RoyalGold.copy(alpha = 0.3f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Clickable Email Button
+                        Card(
+                            onClick = {
+                                try {
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
+                                        data = android.net.Uri.parse("mailto:info@chaudharyvivah.in")
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Support Email: info@chaudharyvivah.in", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, RoyalMaroon.copy(alpha = 0.25f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("support_email_card")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(RoyalMaroon.copy(alpha = 0.1f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Email,
+                                        contentDescription = "Email Support",
+                                        tint = RoyalMaroon,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text("ઈમેલ (Email)", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                                    Text("info@chaudharyvivah.in", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RoyalMaroon)
+                                }
+                            }
+                        }
+
+                        // Clickable WhatsApp Support Button
+                        Card(
+                            onClick = {
+                                try {
+                                    val whatsappUrl = "https://wa.me/919016607483"
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(whatsappUrl))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "WhatsApp Support: 9016607483", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF25D366).copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("support_phone_card")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF25D366).copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Chat,
+                                        contentDescription = "WhatsApp Support",
+                                        tint = Color(0xFF25D366),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text("વોટ્સએપ (WhatsApp)", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                                    Text("9016607483", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RoyalMaroon)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         if (showForgotPasswordDialog) {
@@ -419,21 +654,6 @@ fun AuthScreen(
             var newPasswordInput by remember { mutableStateOf("") }
             var confirmPasswordInput by remember { mutableStateOf("") }
             var forgotDialogError by remember { mutableStateOf("") }
-            var showFirebaseSetupDialog by remember { mutableStateOf(false) }
-
-            if (showFirebaseSetupDialog) {
-                FirebasePhoneSetupDialog(
-                    onDismiss = { showFirebaseSetupDialog = false },
-                    onEnableTestingBypass = {
-                        val testOtp = (100000..999999).random().toString()
-                        generatedForgotOtp = "TEST_MODE_$testOtp"
-                        forgotOtpSent = true
-                        isSendingForgotOtp = false
-                        forgotDialogError = ""
-                        android.widget.Toast.makeText(context, "ટેસ્ટિંગ મોડ: OTP $testOtp છે", android.widget.Toast.LENGTH_LONG).show()
-                    }
-                )
-            }
 
             LaunchedEffect(forgotOtpSent, forgotTimerSeconds) {
                 if (forgotOtpSent && !isForgotOtpVerified && forgotTimerSeconds > 0) {
@@ -445,19 +665,7 @@ fun AuthScreen(
             AlertDialog(
                 onDismissRequest = { showForgotPasswordDialog = false },
                 title = {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("પાસવર્ડ ભૂલી ગયા છો?", fontWeight = FontWeight.Bold, color = RoyalMaroon, fontSize = 17.sp)
-                        IconButton(
-                            onClick = { showFirebaseSetupDialog = true },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(Icons.Default.Info, contentDescription = "Firebase Setup Guide", tint = RoyalMaroon)
-                        }
-                    }
+                    Text("પાસવર્ડ ભૂલી ગયા છો?", fontWeight = FontWeight.Bold, color = RoyalMaroon, fontSize = 17.sp)
                 },
                 text = {
                     Column(
@@ -478,16 +686,6 @@ fun AuthScreen(
                                         color = Color(0xFFD32F2F),
                                         fontSize = 12.sp
                                     )
-                                    if (forgotDialogError.contains("Play Integrity") || forgotDialogError.contains("SHA") || forgotDialogError.contains("Firebase") || forgotDialogError.contains("નિષ્ફળતા")) {
-                                        TextButton(
-                                            onClick = { showFirebaseSetupDialog = true },
-                                            contentPadding = PaddingValues(0.dp)
-                                        ) {
-                                            Icon(Icons.Default.VpnKey, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("SHA ફિંગરપ્રિન્ટ & સેટઅપ સહાયક ખોલો", color = RoyalMaroon, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -513,34 +711,42 @@ fun AuthScreen(
                         if (!forgotOtpSent) {
                             Button(
                                 onClick = {
-                                    if (forgotMobile.trim().length == 10 && forgotMobile.trim().all { it.isDigit() }) {
+                                    val trimmedMobile = forgotMobile.trim()
+                                    if (trimmedMobile.length == 10 && trimmedMobile.all { it.isDigit() }) {
                                         isSendingForgotOtp = true
                                         forgotDialogError = ""
-                                        viewModel.sendFirebaseOtp(
-                                            context = context,
-                                            phoneNumber = forgotMobile.trim(),
-                                            resendingToken = forgotResendToken,
-                                            onOtpSent = { verId, token ->
-                                                generatedForgotOtp = verId
-                                                forgotResendToken = token
-                                                forgotOtpSent = true
+                                        viewModel.checkMobileRegistered(trimmedMobile) { isRegistered ->
+                                            if (!isRegistered) {
                                                 isSendingForgotOtp = false
-                                                forgotTimerSeconds = 60
-                                                forgotDialogError = ""
-                                                android.widget.Toast.makeText(context, "SMS દ્વારા ૬ અંકનો OTP મોકલવામાં આવ્યો છે!", android.widget.Toast.LENGTH_LONG).show()
-                                            },
-                                            onInstantSuccess = {
-                                                isForgotOtpVerified = true
-                                                forgotOtpSent = true
-                                                isSendingForgotOtp = false
-                                                forgotDialogError = ""
-                                                android.widget.Toast.makeText(context, "મોબાઈલ નંબર ઓટોમેટિક ચકાસાયો!", android.widget.Toast.LENGTH_LONG).show()
-                                            },
-                                            onError = { err ->
-                                                isSendingForgotOtp = false
-                                                forgotDialogError = err
+                                                forgotDialogError = "આ મોબાઈલ નંબર નોંધાયેલ નથી. કૃપા કરીને પ્રથમ તમારો નોંધાયેલ મોબાઈલ નંબર દાખલ કરો. (This mobile number is not registered. Please enter a registered mobile number.)"
+                                            } else {
+                                                viewModel.sendFirebaseOtp(
+                                                    context = context,
+                                                    phoneNumber = trimmedMobile,
+                                                    resendingToken = forgotResendToken,
+                                                    onOtpSent = { verId, token ->
+                                                        generatedForgotOtp = verId
+                                                        forgotResendToken = token
+                                                        forgotOtpSent = true
+                                                        isSendingForgotOtp = false
+                                                        forgotTimerSeconds = 60
+                                                        forgotDialogError = ""
+                                                        android.widget.Toast.makeText(context, "SMS દ્વારા ૬ અંકનો OTP મોકલવામાં આવ્યો છે!", android.widget.Toast.LENGTH_LONG).show()
+                                                    },
+                                                    onInstantSuccess = {
+                                                        isForgotOtpVerified = true
+                                                        forgotOtpSent = true
+                                                        isSendingForgotOtp = false
+                                                        forgotDialogError = ""
+                                                        android.widget.Toast.makeText(context, "મોબાઈલ નંબર ઓટોમેટિક ચકાસાયો!", android.widget.Toast.LENGTH_LONG).show()
+                                                    },
+                                                    onError = { err ->
+                                                        isSendingForgotOtp = false
+                                                        forgotDialogError = err
+                                                    }
+                                                )
                                             }
-                                        )
+                                        }
                                     } else {
                                         forgotDialogError = "કૃપા કરીને ૧૦ અંકનો યોગ્ય મોબાઈલ નંબર દાખલ કરો"
                                     }
@@ -758,6 +964,64 @@ fun AuthScreen(
                         Text("રદ કરો (Cancel)", color = Color.Gray)
                     }
                 }
+            )
+        }
+
+        if (showNoInternetDialog) {
+            AlertDialog(
+                onDismissRequest = { showNoInternetDialog = false },
+                icon = { Icon(Icons.Default.WifiOff, contentDescription = null, tint = Color.Red, modifier = Modifier.size(36.dp)) },
+                title = { Text("ઇન્ટરનેટ કનેક્શન પ્રોબ્લેમ", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = RoyalMaroon) },
+                text = {
+                    Text(
+                        text = "Internet connection not available\n\nકૃપા કરીને તમારું ઇન્ટરનેટ કનેક્શન તપાસો અને ફરી પ્રયાસ કરો.",
+                        fontSize = 15.sp,
+                        color = Color.DarkGray
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showNoInternetDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon)
+                    ) {
+                        Text("OK")
+                    }
+                },
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
+
+        if (showNotRegisteredDialog) {
+            AlertDialog(
+                onDismissRequest = { showNotRegisteredDialog = false },
+                icon = { Icon(Icons.Default.PersonAdd, contentDescription = null, tint = WarmSaffron, modifier = Modifier.size(36.dp)) },
+                title = { Text("મોબાઈલ નંબર નોંધાયેલ નથી", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = RoyalMaroon) },
+                text = {
+                    Text(
+                        text = "Please register using New User? Register here button\n\nઆ મોબાઈલ નંબર સિસ્ટમમાં નોંધાયેલ નથી. કૃપા કરીને નવી નોંધણી કરો.",
+                        fontSize = 15.sp,
+                        color = Color.DarkGray
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showNotRegisteredDialog = false
+                            onLoginSuccess("Bride", true)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon)
+                    ) {
+                        Text("New User? Register here")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showNotRegisteredDialog = false }
+                    ) {
+                        Text("OK / બંધ કરો")
+                    }
+                },
+                shape = RoundedCornerShape(16.dp)
             )
         }
     }

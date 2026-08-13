@@ -2,20 +2,23 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,16 +26,20 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.model.Profile
 import com.example.ui.theme.*
+import com.example.ui.viewmodel.MatrimonyViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LockedBioDataView(
     profile: Profile,
+    viewModel: MatrimonyViewModel? = null,
     onEditClick: () -> Unit,
     onBackClick: () -> Unit,
     onLogoutClick: () -> Unit = {},
     onRefreshClick: () -> Unit = {}
 ) {
+    val context = LocalContext.current
+    var showMatchCompleteDeleteDialog by remember { mutableStateOf(false) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -61,7 +68,7 @@ fun LockedBioDataView(
                         onClick = onLogoutClick,
                         modifier = Modifier.testTag("logout_top_button")
                     ) {
-                        Icon(Icons.Default.Logout, contentDescription = "Logout", tint = RoyalMaroon)
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout", tint = RoyalMaroon)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CreamBackground)
@@ -303,7 +310,12 @@ fun LockedBioDataView(
                 BioDataItem(label = "પસંદગી / લિંગ", value = if (profile.gender.contains("Bride", ignoreCase = true) || profile.gender.contains("કન્યા", ignoreCase = true) || profile.gender.contains("Female", ignoreCase = true) || profile.gender.contains("સ્ત્રી", ignoreCase = true)) "કન્યા (સ્ત્રી)" else "વરરાજા (પુરુષ)")
                 BioDataItem(label = "ઉંમર અને ઊંચાઈ", value = "${profile.age} વર્ષ | ${profile.height}")
                 BioDataItem(label = "બ્લડ ગ્રુપ (Blood Group)", value = profile.bloodGroup.ifBlank { "A+" })
-                BioDataItem(label = "NRI ઉમેદવાર (NRI Candidate)", value = if (profile.isNri) "હા - NRI (Abroad)" else "ના - Resident in India")
+                BioDataItem(
+                    label = "NRI ઉમેદવાર (NRI Candidate)",
+                    value = if (profile.isNri) {
+                        if (profile.nriCountry.isNotBlank()) "હા - NRI (${profile.nriCountry})" else "હા - NRI (Abroad)"
+                    } else "ના - Resident in India"
+                )
                 BioDataItem(label = "અગાઉનો વૈવાહિક ઇતિહાસ", value = if (profile.hasMaritalHistory) "હા - અગાઉ લગ્ન થયેલ છે" else "ના - ક્યારેય લગ્ન નથી થયેલ (Never Married)")
                 BioDataItem(label = "જન્મ તારીખ (Birth Date)", value = if (profile.birthDate.isNotBlank()) profile.birthDate else "15/08/1998")
                 BioDataItem(label = "જન્મ સમય (Birth Time)", value = if (profile.birthTime.isNotBlank()) profile.birthTime else "08:30 AM")
@@ -347,6 +359,53 @@ fun LockedBioDataView(
                 )
             }
 
+            // Account Delete Option Card - Visible ONLY AFTER profile is approved by admin
+            if (profile.isApproved) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showMatchCompleteDeleteDialog = true }
+                        .testTag("delete_account_biodata_card"),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFE65100)),
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Celebration,
+                            contentDescription = null,
+                            tint = Color(0xFFD32F2F),
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "🎉 સગાઈ/લગ્ન નક્કી થઈ ગયા? (Delete Account)",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.5.sp,
+                                color = Color(0xFFD32F2F)
+                            )
+                            Text(
+                                text = "અહીં ક્લિક કરી તમારું એકાઉન્ટ અને બાયોડેટા કાયમી ધોરણે ડિલીટ કરો.",
+                                fontSize = 11.5.sp,
+                                color = Color.DarkGray
+                            )
+                        }
+                        Text(
+                            text = "ડિલીટ કરો",
+                            color = Color(0xFFD32F2F),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             // Bottom Edit Action Button
@@ -364,6 +423,160 @@ fun LockedBioDataView(
                 Text("બાયોડેટા એડિટ કરો અને અપડેટ મોકલો", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
         }
+    }
+
+    if (showMatchCompleteDeleteDialog) {
+        var selectedOption by remember { mutableStateOf(0) } // 0: Match Found, 1: Other Reason
+        var partnerName by remember { mutableStateOf("") }
+        var otherReasonText by remember { mutableStateOf("") }
+        var isDeleting by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { if (!isDeleting) showMatchCompleteDeleteDialog = false },
+            icon = {
+                Icon(Icons.Default.Celebration, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(40.dp))
+            },
+            title = {
+                Text(
+                    text = "એકાઉન્ટ ડિલીટ કરો (Delete Account)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = RoyalMaroon
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "એકાઉન્ટ ડિલીટ કરવા માટેનું કારણ પસંદ કરો:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = RoyalMaroon
+                    )
+
+                    // Option 1: Match Found
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(enabled = !isDeleting) { selectedOption = 0 }
+                            .padding(vertical = 2.dp)
+                    ) {
+                        RadioButton(
+                            selected = (selectedOption == 0),
+                            onClick = { selectedOption = 0 },
+                            enabled = !isDeleting,
+                            colors = RadioButtonDefaults.colors(selectedColor = RoyalMaroon)
+                        )
+                        Text(
+                            text = "1) સગાઈ / લગ્ન નક્કી થઈ ગયેલ છે (Match Found)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.DarkGray
+                        )
+                    }
+
+                    if (selectedOption == 0) {
+                        OutlinedTextField(
+                            value = partnerName,
+                            onValueChange = { partnerName = it },
+                            enabled = !isDeleting,
+                            label = { Text("જીવનસાથીનું નામ (Match Name - Optional)") },
+                            placeholder = { Text("દા.ત. રમેશભાઈ ચૌધરી") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp)
+                                .testTag("delete_partner_name_input")
+                        )
+                    }
+
+                    // Option 2: Other Reason
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(enabled = !isDeleting) { selectedOption = 1 }
+                            .padding(vertical = 2.dp)
+                    ) {
+                        RadioButton(
+                            selected = (selectedOption == 1),
+                            onClick = { selectedOption = 1 },
+                            enabled = !isDeleting,
+                            colors = RadioButtonDefaults.colors(selectedColor = RoyalMaroon)
+                        )
+                        Text(
+                            text = "2) અન્ય કારણ (Other Reason)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.DarkGray
+                        )
+                    }
+
+                    if (selectedOption == 1) {
+                        OutlinedTextField(
+                            value = otherReasonText,
+                            onValueChange = { otherReasonText = it },
+                            enabled = !isDeleting,
+                            label = { Text("ડિલીટ કરવાનું કારણ (Reason - Optional)") },
+                            placeholder = { Text("દા.ત. સમય અભાવ / અન્ય જરૂરિયાત") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp)
+                                .testTag("delete_other_reason_input")
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (viewModel != null) {
+                            isDeleting = true
+                            val finalPartnerName = if (selectedOption == 0) partnerName.trim() else ""
+                            val finalReason = if (selectedOption == 0) "Match Found / Got Married" else otherReasonText.ifBlank { "Other Reason" }
+                            viewModel.deleteAccountOnMatchComplete(
+                                partnerName = finalPartnerName,
+                                reason = finalReason,
+                                onSuccess = {
+                                    isDeleting = false
+                                    showMatchCompleteDeleteDialog = false
+                                    android.widget.Toast.makeText(context, "એકાઉન્ટ સફળતાપૂર્વક ડિલીટ કરવામાં આવ્યું છે.", android.widget.Toast.LENGTH_LONG).show()
+                                    onLogoutClick()
+                                },
+                                onError = { err ->
+                                    isDeleting = false
+                                    android.widget.Toast.makeText(context, err, android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            )
+                        } else {
+                            onLogoutClick()
+                        }
+                    },
+                    enabled = !isDeleting,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                    modifier = Modifier.testTag("confirm_delete_account_button")
+                ) {
+                    if (isDeleting) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("ડિલીટ થઈ રહ્યું છે...")
+                    } else {
+                        Text("હા, એકાઉન્ટ ડિલીટ કરો", fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showMatchCompleteDeleteDialog = false },
+                    enabled = !isDeleting
+                ) {
+                    Text("રદ કરો (Cancel)")
+                }
+            }
+        )
     }
 }
 

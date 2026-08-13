@@ -157,6 +157,48 @@ fun AdminApprovalScreen(
                     }
                 }
             } else {
+                var processingProfileId by remember { mutableStateOf<String?>(null) }
+                var processingActionName by remember { mutableStateOf("") }
+
+                if (processingProfileId != null) {
+                    androidx.compose.ui.window.Dialog(
+                        onDismissRequest = { /* strictly wait */ },
+                        properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+                    ) {
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = SurfaceCream),
+                            border = androidx.compose.foundation.BorderStroke(2.dp, RoyalGold),
+                            modifier = Modifier.padding(16.dp).fillMaxWidth(0.85f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(44.dp),
+                                    color = RoyalMaroon,
+                                    strokeWidth = 4.dp
+                                )
+                                Text(
+                                    text = "$processingActionName...",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = RoyalMaroon,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                Text(
+                                    text = "કૃપા કરીને રાહ જુઓ, ફાયરબેઝમાં ડેટા અપડેટ થઈ રહ્યો છે.",
+                                    fontSize = 12.sp,
+                                    color = Color.DarkGray,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier.fillMaxSize()
@@ -165,16 +207,40 @@ fun AdminApprovalScreen(
                         AdminProfileCard(
                             profile = profile,
                             onApprove = {
-                                viewModel.approveProfile(profile.id)
-                                Toast.makeText(context, "${profile.fullName} ની પ્રોફાઇલ મંજૂર કરવામાં આવી!", Toast.LENGTH_SHORT).show()
+                                processingProfileId = profile.id
+                                processingActionName = "${profile.fullName} ની પ્રોફાઇલ મંજૂર કરી રહ્યા છીએ"
+                                viewModel.approveProfile(profile.id) { success ->
+                                    processingProfileId = null
+                                    if (success) {
+                                        Toast.makeText(context, "${profile.fullName} ની પ્રોફાઇલ મંજૂર કરવામાં આવી!", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "મંજૂરી નિષ્ફળ! ફરી પ્રયાસ કરો.", Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             },
                             onReject = { reason ->
-                                viewModel.rejectProfile(profile.id, reason)
-                                Toast.makeText(context, "${profile.fullName} ની પ્રોફાઇલ અસ્વીકાર કરવામાં આવી.", Toast.LENGTH_SHORT).show()
+                                processingProfileId = profile.id
+                                processingActionName = "${profile.fullName} ની પ્રોફાઇલ અસ્વીકાર કરી રહ્યા છીએ"
+                                viewModel.rejectProfile(profile.id, reason) { success ->
+                                    processingProfileId = null
+                                    if (success) {
+                                        Toast.makeText(context, "${profile.fullName} ની પ્રોફાઇલ અસ્વીકાર કરવામાં આવી.", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "અસ્વીકાર નિષ્ફળ! ફરી પ્રયાસ કરો.", Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             },
                             onDelete = {
-                                viewModel.deleteProfile(profile.id)
-                                Toast.makeText(context, "${profile.fullName} ની અરજી રદ કરવામાં આવી.", Toast.LENGTH_SHORT).show()
+                                processingProfileId = profile.id
+                                processingActionName = "${profile.fullName} ની અરજી રદ કરી રહ્યા છીએ"
+                                viewModel.deleteProfile(profile.id) { success ->
+                                    processingProfileId = null
+                                    if (success) {
+                                        Toast.makeText(context, "${profile.fullName} ની અરજી રદ કરવામાં આવી.", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "રદ કરવું નિષ્ફળ! ફરી પ્રયાસ કરો.", Toast.LENGTH_LONG).show()
+                                    }
+                                }
                             }
                         )
                     }
@@ -258,55 +324,6 @@ fun AdminProfileCard(
                 }
             }
         }
-    }
-
-    if (showRejectDialog) {
-        AlertDialog(
-            onDismissRequest = { showRejectDialog = false },
-            title = {
-                Text(
-                    text = "પ્રોફાઇલ અસ્વીકારવાનું કારણ",
-                    fontWeight = FontWeight.Bold,
-                    color = RoyalMaroon
-                )
-            },
-            text = {
-                Column {
-                    Text(
-                        text = "${profile.fullName} ની પ્રોફાઇલ અસ્વીકાર કરવા માટેનું સ્પષ્ટ કારણ દાખલ કરો. આ કારણ સભ્યને દર્શાવાશે:",
-                        fontSize = 13.sp,
-                        color = Color.DarkGray
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = rejectionReasonInput,
-                        onValueChange = { rejectionReasonInput = it },
-                        placeholder = { Text("ઉદા. આધાર કાર્ડ સ્પષ્ટ નથી / ફોટો અપલોડ કરો...") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("admin_rejection_reason_input"),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val reason = rejectionReasonInput.ifBlank { "પ્રોફાઇલ વિગતો અપૂર્ણ અથવા અયોગ્ય છે." }
-                        showRejectDialog = false
-                        onReject(reason)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-                ) {
-                    Text("અસ્વીકાર મોકલો", color = Color.White)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRejectDialog = false }) {
-                    Text("રદ કરો")
-                }
-            }
-        )
     }
 
     Card(
@@ -483,6 +500,55 @@ fun AdminProfileCard(
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("મંજૂર કરો", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+
+            if (showRejectDialog) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.Red)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "પ્રોફાઇલ અસ્વીકારવાનું કાયમી કારણ દાખલ કરો:",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Red
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedTextField(
+                            value = rejectionReasonInput,
+                            onValueChange = { rejectionReasonInput = it },
+                            placeholder = { Text("ઉદા. આધાર કાર્ડ સ્પષ્ટ નથી / ફોટો અપલોડ કરો...") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("admin_rejection_reason_inline_input"),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = { showRejectDialog = false }) {
+                                Text("રદ કરો", color = Color.Gray)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    val reason = rejectionReasonInput.ifBlank { "પ્રોફાઇલ વિગતો અપૂર્ણ અથવા અયોગ્ય છે." }
+                                    showRejectDialog = false
+                                    onReject(reason)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                            ) {
+                                Text("અસ્વીકાર મોકલો", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
         }

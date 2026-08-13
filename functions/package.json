@@ -1,0 +1,14 @@
+{
+  "name": "chaudhary-matrimonial-functions",
+  "version": "1.0.0",
+  "description": "Firebase Cloud Functions for Push Notifications",
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "firebase-functions": "^5.0.0"
+  },
+  "engines": {
+    "node": "22"
+  },
+  "private": true
+}

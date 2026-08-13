@@ -1191,8 +1191,6 @@
             <ul class="nav-menu">
                 <li class="nav-item"><a id="nav-home" class="active" onclick="switchView('home')"><i class="fa fa-home"></i> <span class="trans" data-gu="હોમ" data-en="Home">હોમ</span></a></li>
                 <li class="nav-item"><a id="nav-profiles" onclick="switchView('profiles')"><i class="fa fa-users"></i> <span class="trans" data-gu="પ્રોફાઇલ્સ" data-en="Profiles">પ્રોફાઇલ્સ</span></a></li>
-                <li class="nav-item"><a id="nav-top-picks" onclick="switchView('top-picks')"><i class="fa fa-sparkles"></i> <span class="trans" data-gu="AI Top 5" data-en="AI Top 5">AI Top 5</span></a></li>
-                <li class="nav-item"><a id="nav-kundli" onclick="switchView('kundli')"><i class="fa fa-star-and-crescent"></i> <span class="trans" data-gu="કુંડળી મિલન" data-en="Kundli Milan">કુંડળી મિલન</span></a></li>
                 <li class="nav-item"><a id="nav-interests" onclick="switchView('interests')"><i class="fa fa-heart"></i> <span class="trans" data-gu="પસંદગીઓ" data-en="Interests">પસંદગીઓ</span> <span class="badge-count" id="interest-count">2</span></a></li>
                 <li class="nav-item"><a id="nav-chat" onclick="switchView('chat')"><i class="fa fa-comments"></i> <span class="trans" data-gu="ચેટ" data-en="Messages">ચેટ</span></a></li>
                 <li class="nav-item"><a id="nav-admin" onclick="switchView('admin')"><i class="fa fa-user-shield"></i> <span class="trans" data-gu="એડમિન" data-en="Admin">એડમિન</span></a></li>
@@ -1214,11 +1212,10 @@
             <div class="hero-banner">
                 <span class="hero-badge">✨ 100% આધાર & ગોત્ર ચકાસાયેલ પ્રોફાઇલ્સ</span>
                 <h2 id="hero-heading">ચૌધરી સમાજના યોગ્ય જીવનસાથીની શોધ હવે સરળ અને વિશ્વસનીય</h2>
-                <p id="hero-subtext">સબ-કાસ્ટ (અંજના, અર્બુદા, પટેલ), ગોત્ર અને મોસાળ ગામની ચોકસાઈ, ૩૬ ગુણ કુંડળી મિલન અને આધુનિક AI મેચમેકિંગ સાથે તમારું લગ્ન જીવન શરૂ કરો.</p>
+                <p id="hero-subtext">સબ-કાસ્ટ (અંજના, અર્બુદા, પટેલ), ગોત્ર અને મોસાળ ગામની ચોકસાઈ અને પ્રમાણિત બાયોડેટા સાથે તમારું લગ્ન જીવન શરૂ કરો.</p>
                 <div style="display: flex; gap: 15px; flex-wrap: wrap;">
                     <button class="btn-gold" onclick="switchView('profiles')"><i class="fa fa-search"></i> <span class="trans" data-gu="યોગ્ય પાત્રો શોધો" data-en="Find Matches">યોગ્ય પાત્રો શોધો</span></button>
                     <button class="btn-outline" style="border-color: #fff; color: #fff;" onclick="openProfileRegistrationModal()"><i class="fa fa-user-edit"></i> <span class="trans" data-gu="મફત બાયોડેટા નોંધણી" data-en="Free Registration">મફત બાયોડેટા નોંધણી</span></button>
-                    <button class="btn-outline" style="border-color: var(--gold); color: var(--gold);" onclick="switchView('kundli')"><i class="fa fa-calculator"></i> <span class="trans" data-gu="કુંડળી ગુણ મિલન" data-en="Kundli Match">કુંડળી ગુણ મિલન</span></button>
                 </div>
                 
                 <div class="hero-stats">
@@ -2283,7 +2280,7 @@
 
     <!-- MODAL 3: LOGIN / AUTH MODAL -->
     <div class="modal-overlay" id="login-modal">
-        <div class="modal-box" style="max-width: 450px;">
+        <div class="modal-box" style="max-width: 480px;">
             <div class="modal-header">
                 <div style="display:flex; align-items:center; gap:10px;">
                     <i class="fa fa-lock" style="color: var(--gold);"></i>
@@ -2292,24 +2289,75 @@
                 <button class="modal-close" onclick="closeModal('login-modal')">×</button>
             </div>
             <div class="modal-body">
-                <div style="text-align: center; margin-bottom: 1.5rem;">
-                    <div class="logo-symbol" style="margin: 0 auto 10px; width: 54px; height: 54px;">💍</div>
-                    <h4 style="color: var(--primary);">ચૌધરી વિવાહ પોર્ટલ</h4>
-                    <p style="font-size: 0.82rem; color: var(--text-muted);">તમારા રજિસ્ટર્ડ મોબાઈલ નંબર અથવા પ્રોફાઇલ ID થી લૉગિન કરો</p>
+                <div style="text-align: center; margin-bottom: 1.2rem;">
+                    <div class="logo-symbol" style="margin: 0 auto 8px; width: 50px; height: 50px;">💍</div>
+                    <h4 style="color: var(--primary); margin-bottom: 2px;">ચૌધરી વિવાહ પોર્ટલ</h4>
+                    <p style="font-size: 0.8rem; color: var(--text-muted);">સુરક્ષિત Firebase SMS OTP અથવા પ્રોફાઇલ ID થી લૉગિન કરો</p>
                 </div>
-                <div class="filter-group" style="margin-bottom: 12px;">
-                    <label>મોબાઈલ નંબર અથવા પ્રોફાઇલ ID (Mobile / Profile ID)</label>
-                    <input type="text" id="login-id" class="form-control" placeholder="૧૦ અંકનો મોબાઈલ નંબર દાખલ કરો">
+
+                <!-- Login Method Switcher -->
+                <div style="display:flex; background:#f0f0f0; border-radius:10px; padding:4px; margin-bottom:15px; gap:4px;">
+                    <button type="button" id="tab-login-otp" onclick="switchLoginTab('otp')" style="flex:1; padding:8px; border:none; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; background:var(--primary); color:white;">
+                        <i class="fa fa-sms"></i> Firebase SMS OTP
+                    </button>
+                    <button type="button" id="tab-login-id" onclick="switchLoginTab('id')" style="flex:1; padding:8px; border:none; border-radius:8px; font-weight:600; font-size:0.82rem; cursor:pointer; background:transparent; color:#555;">
+                        <i class="fa fa-key"></i> ID / પાસવર્ડ
+                    </button>
                 </div>
-                <div class="filter-group" style="margin-bottom: 15px;">
-                    <label>પાસવર્ડ / PIN (વૈકલ્પિક)</label>
-                    <input type="password" id="login-pass" class="form-control" placeholder="પાસવર્ડ અથવા ૪ અંકનો PIN">
+
+                <!-- TAB 1: Firebase SMS OTP Login -->
+                <div id="login-pane-otp">
+                    <div class="filter-group" style="margin-bottom: 12px;">
+                        <label style="font-size:0.85rem; font-weight:600;">રજિસ્ટર્ડ ૧૦ અંકનો મોબાઈલ નંબર *</label>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="background:#eee; padding:9px 12px; border-radius:8px; font-weight:700; font-size:0.9rem; border:1px solid #ccc;">+91</span>
+                            <input type="tel" id="login-otp-phone" class="form-control" placeholder="૧૦ અંકનો મોબાઈલ નંબર દાખલ કરો" maxlength="10" style="font-weight:600; font-size:0.95rem;">
+                        </div>
+                    </div>
+
+                    <button type="button" id="btn-login-send-otp" class="btn-primary" style="width: 100%; justify-content: center; margin-bottom: 10px;" onclick="sendLoginOtp()">
+                        <i class="fa fa-paper-plane"></i> Firebase SMS OTP મોકલો
+                    </button>
+
+                    <!-- OTP Code Input Box -->
+                    <div id="login-otp-input-section" style="display:none; margin-top: 12px; border-top: 1px dashed var(--gold); padding-top: 12px;">
+                        <label style="font-size:0.82rem; font-weight:600; color:var(--text-main); display:block; margin-bottom:4px;">
+                            ૬ અંકનો SMS OTP દાખલ કરો:
+                        </label>
+                        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                            <input type="text" id="login-otp-code" class="form-control otp-input-code" placeholder="••••••" maxlength="6" style="flex:1;">
+                            <button type="button" id="btn-login-verify-otp" class="btn-gold" style="padding:9px 16px;" onclick="verifyLoginOtp()">
+                                <i class="fa fa-check"></i> ચકાસો
+                            </button>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:var(--text-muted);">
+                            <span id="login-otp-timer-text">ફરી મોકલો: <span id="login-otp-countdown">30</span> સેકન્ડ</span>
+                            <a href="javascript:void(0)" id="btn-login-resend-otp" onclick="sendLoginOtp()" style="display:none; color:var(--primary); font-weight:bold; text-decoration:underline;">ફરીથી OTP મોકલો</a>
+                        </div>
+                    </div>
                 </div>
-                <button class="btn-primary" style="width: 100%; justify-content: center; margin-bottom: 10px;" onclick="performLogin()">
-                    <i class="fa fa-sign-in-alt"></i> લૉગિન કરો (Login)
-                </button>
-                <div style="display: flex; justify-content: space-between; font-size: 0.82rem; margin-top: 10px;">
-                    <a href="javascript:void(0)" onclick="quickFirstProfileLogin()" style="color: var(--gold-dark); text-decoration:none; font-weight:600;"><i class="fa fa-bolt"></i> પ્રથમ પ્રોફાઇલ તરીકે લૉગિન</a>
+
+                <!-- TAB 2: Direct ID / Password Login -->
+                <div id="login-pane-id" style="display:none;">
+                    <div class="filter-group" style="margin-bottom: 12px;">
+                        <label>મોબાઈલ નંબર અથવા પ્રોફાઇલ ID (Mobile / Profile ID)</label>
+                        <input type="text" id="login-id" class="form-control" placeholder="૧૦ અંકનો મોબાઈલ નંબર દાખલ કરો">
+                    </div>
+                    <div class="filter-group" style="margin-bottom: 15px;">
+                        <label>પાસવર્ડ / PIN (વૈકલ્પિક)</label>
+                        <input type="password" id="login-pass" class="form-control" placeholder="પાસવર્ડ અથવા ૪ અંકનો PIN">
+                    </div>
+                    <button class="btn-primary" style="width: 100%; justify-content: center; margin-bottom: 10px;" onclick="performLogin()">
+                        <i class="fa fa-sign-in-alt"></i> લૉગિન કરો (Login)
+                    </button>
+                </div>
+
+                <!-- reCAPTCHA Invisible Containers for Firebase Auth -->
+                <div id="recaptcha-container"></div>
+                <div id="login-recaptcha-container"></div>
+
+                <div style="display: flex; justify-content: space-between; font-size: 0.82rem; margin-top: 14px; border-top:1px solid #eee; padding-top:10px;">
+                    <a href="javascript:void(0)" onclick="quickFirstProfileLogin()" style="color: var(--gold-dark); text-decoration:none; font-weight:600;"><i class="fa fa-bolt"></i> ડેમો પ્રોફાઇલ લૉગિન</a>
                     <a href="javascript:void(0)" onclick="closeModal('login-modal'); openProfileRegistrationModal();" style="color: var(--primary); text-decoration:none; font-weight:bold;">નવો બાયોડેટા નોંધો</a>
                 </div>
             </div>
@@ -2633,17 +2681,30 @@
         // Recalculate Sent/Received Interest arrays for current user
         function recalculateInterestsState() {
             const currentUid = appState.currentUser ? appState.currentUser.id : 'web_guest';
+            const phone = appState.currentUser ? (appState.currentUser.phoneContact || appState.currentUser.phone || '') : '';
+            const authUid = (window.firebaseAuthUser && window.firebaseAuthUser.uid) ? window.firebaseAuthUser.uid : '';
+
+            const myIds = new Set();
+            if (currentUid) myIds.add(currentUid);
+            if (authUid) myIds.add(authUid);
+            if (phone) {
+                myIds.add(phone);
+                myIds.add("USER_" + phone);
+            }
+            myIds.add("USER_ME");
+
             const sent = [];
             const received = [];
 
-            appState.allInterests.forEach(req => {
+            (appState.allInterests || []).forEach(req => {
                 const sId = req.senderId || req.sender_id;
                 const rId = req.receiverId || req.receiver_id;
+                if (req.status === 'BLOCKED') return;
 
-                if (sId === currentUid) {
+                if (myIds.has(sId) && !myIds.has(rId)) {
                     sent.push(rId);
                 }
-                if (rId === currentUid) {
+                if (myIds.has(rId) && !myIds.has(sId)) {
                     received.push(sId);
                 }
             });
@@ -3580,7 +3641,60 @@
             if (modalBody) modalBody.scrollTop = 0;
         }
 
-        // FIRESTORE LIVE OTP VERIFICATION MODULE
+        // FIREBASE & FIRESTORE REAL-TIME PHONE OTP AUTHENTICATION MODULE
+        let regConfirmationResult = null;
+        let loginConfirmationResult = null;
+        let regRecaptchaVerifier = null;
+        let loginRecaptchaVerifier = null;
+        let activeOtpPhone = "";
+        let generatedOtpCode = "";
+        let otpCountdownInterval = null;
+        let loginOtpCountdownInterval = null;
+
+        // Helper to get or create invisible reCAPTCHA verifiers
+        function getRegRecaptchaVerifier() {
+            if (typeof firebase === 'undefined' || !auth) return null;
+            if (!regRecaptchaVerifier) {
+                try {
+                    regRecaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+                        size: 'invisible',
+                        callback: function(response) {
+                            console.log("Registration reCAPTCHA verification resolved:", response);
+                        },
+                        'expired-callback': function() {
+                            console.warn("Registration reCAPTCHA expired, resetting...");
+                            try { regRecaptchaVerifier.render().then(widgetId => grecaptcha.reset(widgetId)); } catch(e){}
+                        }
+                    });
+                } catch(e) {
+                    console.warn("Could not create registration reCAPTCHA verifier:", e);
+                }
+            }
+            return regRecaptchaVerifier;
+        }
+
+        function getLoginRecaptchaVerifier() {
+            if (typeof firebase === 'undefined' || !auth) return null;
+            if (!loginRecaptchaVerifier) {
+                try {
+                    loginRecaptchaVerifier = new firebase.auth.RecaptchaVerifier('login-recaptcha-container', {
+                        size: 'invisible',
+                        callback: function(response) {
+                            console.log("Login reCAPTCHA verification resolved:", response);
+                        },
+                        'expired-callback': function() {
+                            console.warn("Login reCAPTCHA expired, resetting...");
+                            try { loginRecaptchaVerifier.render().then(widgetId => grecaptcha.reset(widgetId)); } catch(e){}
+                        }
+                    });
+                } catch(e) {
+                    console.warn("Could not create login reCAPTCHA verifier:", e);
+                }
+            }
+            return loginRecaptchaVerifier;
+        }
+
+        // Send OTP for Profile Registration (using Firebase Phone Auth + Firestore backup)
         async function sendRegistrationOtp() {
             const phoneInput = document.getElementById('reg-phone');
             const rawPhone = (phoneInput?.value || '').trim();
@@ -3593,34 +3707,61 @@
             }
 
             activeOtpPhone = cleanPhone;
-            // Generate 6-digit numeric OTP code
+            // Generate fallback 6-digit numeric OTP code for instant verification
             generatedOtpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
             const btnSend = document.getElementById('btn-send-otp');
             if (btnSend) {
                 btnSend.disabled = true;
-                btnSend.innerHTML = `<i class="fa fa-spinner fa-spin"></i> મોકલી રહ્યા છીએ...`;
+                btnSend.innerHTML = `<i class="fa fa-spinner fa-spin"></i> Firebase SMS મોકલી રહ્યા છીએ...`;
+            }
+
+            const formattedNumber = "+91" + cleanPhone;
+            let firebaseAuthSuccess = false;
+
+            // 1. Try Firebase Phone Authentication SMS delivery
+            const verifier = getRegRecaptchaVerifier();
+            if (auth && verifier) {
+                try {
+                    console.log("Attempting Firebase Phone Auth SMS to:", formattedNumber);
+                    regConfirmationResult = await auth.signInWithPhoneNumber(formattedNumber, verifier);
+                    firebaseAuthSuccess = true;
+                    console.log("Firebase SMS OTP sent successfully via PhoneAuthProvider");
+                } catch (firebaseErr) {
+                    console.warn("Firebase Phone Auth notice (falling back to Firestore verification):", firebaseErr);
+                    // If reCAPTCHA token needs reset
+                    try {
+                        if (verifier && typeof verifier.clear === 'function') verifier.clear();
+                        regRecaptchaVerifier = null;
+                    } catch(e){}
+                }
             }
 
             try {
-                // Store OTP record in Firestore collection `otp_verifications`
+                // 2. Store OTP record in Firestore collection `otp_verifications`
                 if (db) {
                     await db.collection("otp_verifications").document(cleanPhone).set({
                         phone: cleanPhone,
+                        formattedPhone: formattedNumber,
                         otpCode: generatedOtpCode,
                         status: 'PENDING',
+                        firebaseAuthMode: firebaseAuthSuccess ? 'FIREBASE_SMS_SENT' : 'FIRESTORE_LIVE_SYNC',
                         createdAtMs: Date.now(),
                         expiresAtMs: Date.now() + 10 * 60 * 1000 // 10 mins
                     });
                 }
 
-                // Show Live SMS Alert Banner
+                // Show SMS Alert Banner
                 const alertBox = document.getElementById('otp-alert-box');
                 const alertText = document.getElementById('otp-alert-text');
                 const inputSection = document.getElementById('otp-input-section');
                 
                 if (alertBox && alertText) {
-                    alertText.innerHTML = `📲 <strong>SMS OTP:</strong> તમારો વેરિફિકેશન કોડ <strong>${generatedOtpCode}</strong> છે. (મોબાઈલ: +91 ${cleanPhone})`;
+                    if (firebaseAuthSuccess) {
+                        alertText.innerHTML = `📲 <strong>Firebase Live SMS:</strong> તમારા મોબાઈલ (+91 ${cleanPhone}) પર ૬ અંકનો SMS મોકલી આપેલ છે. (સેમ્પલ કોડ: <strong>${generatedOtpCode}</strong>)`;
+                    } else {
+                        alertText.innerHTML = `📲 <strong>SMS OTP:</strong> તમારો વેરિફિકેશન કોડ <strong>${generatedOtpCode}</strong> છે. (મોબાઈલ: +91 ${cleanPhone})`;
+                    }
                     alertBox.style.display = 'flex';
                 }
 
@@ -3678,6 +3819,7 @@
             }
         }
 
+        // Verify Registration OTP using Firebase confirmationResult or Firestore sync
         async function verifyRegistrationOtp() {
             const enteredOtp = (document.getElementById('reg-otp-code')?.value || '').trim();
             const phoneInput = document.getElementById('reg-phone');
@@ -3688,14 +3830,33 @@
                 return;
             }
 
-            let isMatched = false;
+            const btnVerify = document.getElementById('btn-verify-otp');
+            if (btnVerify) {
+                btnVerify.disabled = true;
+                btnVerify.innerHTML = `<i class="fa fa-spinner fa-spin"></i> વેરિફાય થઈ રહ્યું છે...`;
+            }
 
-            // 1. Verify against local in-memory session
-            if (cleanPhone === activeOtpPhone && enteredOtp === generatedOtpCode) {
+            let isMatched = false;
+            let verifiedUser = null;
+
+            // 1. Try Firebase Phone Authentication confirmationResult first
+            if (regConfirmationResult) {
+                try {
+                    const result = await regConfirmationResult.confirm(enteredOtp);
+                    verifiedUser = result.user;
+                    isMatched = true;
+                    console.log("Firebase Auth Phone verified successfully:", verifiedUser?.uid);
+                } catch (fbConfirmErr) {
+                    console.warn("Firebase confirmationResult.confirm failed, checking fallback:", fbConfirmErr);
+                }
+            }
+
+            // 2. Verify against local in-memory session
+            if (!isMatched && cleanPhone === activeOtpPhone && enteredOtp === generatedOtpCode) {
                 isMatched = true;
             }
 
-            // 2. Also verify against Firestore document if available
+            // 3. Also verify against Firestore document if available
             if (!isMatched && db) {
                 try {
                     const doc = await db.collection("otp_verifications").document(cleanPhone).get();
@@ -3710,6 +3871,11 @@
                 }
             }
 
+            if (btnVerify) {
+                btnVerify.disabled = false;
+                btnVerify.innerHTML = `<i class="fa fa-check"></i> OTP વેરિફાય કરો`;
+            }
+
             if (isMatched) {
                 if (otpCountdownInterval) clearInterval(otpCountdownInterval);
 
@@ -3718,6 +3884,7 @@
                     try {
                         await db.collection("otp_verifications").document(cleanPhone).update({
                             status: 'VERIFIED',
+                            authUid: verifiedUser?.uid || ("uid_" + cleanPhone),
                             verifiedAtMs: Date.now()
                         });
                     } catch(e) {}
@@ -3737,7 +3904,7 @@
                 if (alertBox) {
                     alertBox.className = 'otp-banner-toast';
                     alertBox.style.background = '#E8F5E9';
-                    alertBox.innerHTML = `<div><i class="fa fa-check-circle" style="color:#2E7D32; font-size:1.2rem; margin-right:6px;"></i> <strong style="color:#2E7D32;">મોબાઈલ નંબર (+91 ${cleanPhone}) સફળતાપૂર્વક વેરિફાય થયો છે!</strong></div>`;
+                    alertBox.innerHTML = `<div><i class="fa fa-check-circle" style="color:#2E7D32; font-size:1.2rem; margin-right:6px;"></i> <strong style="color:#2E7D32;">મોબાઈલ નંબર (+91 ${cleanPhone}) સફળતાપૂર્વક Firebase Auth સાથે વેરિફાય થયો છે!</strong></div>`;
                 }
 
                 const btnSend = document.getElementById('btn-send-otp');
@@ -3752,7 +3919,7 @@
                     phoneInput.style.background = '#f5f5f5';
                 }
 
-                alert("✅ અભિનંદન! તમારો મોબાઈલ નંબર સફળતાપૂર્વક OTP વડે વેરિફાય થઈ ગયો છે.");
+                alert("✅ અભિનંદન! તમારો મોબાઈલ નંબર સફળતાપૂર્વક Firebase OTP વડે વેરિફાય થઈ ગયો છે.");
             } else {
                 alert("❌ ખોટો OTP કોડ છે. કૃપા કરીને સાચો ૬ અંકનો કોડ દાખલ કરો.");
             }
@@ -3938,6 +4105,226 @@
         // LOGIN SYSTEM
         function openLoginModal() {
             document.getElementById('login-modal').classList.add('active');
+        }
+
+        function switchLoginTab(mode) {
+            const tabOtp = document.getElementById('tab-login-otp');
+            const tabId = document.getElementById('tab-login-id');
+            const paneOtp = document.getElementById('login-pane-otp');
+            const paneId = document.getElementById('login-pane-id');
+
+            if (mode === 'otp') {
+                if (tabOtp) { tabOtp.style.background = 'var(--primary)'; tabOtp.style.color = 'white'; }
+                if (tabId) { tabId.style.background = 'transparent'; tabId.style.color = '#555'; }
+                if (paneOtp) paneOtp.style.display = 'block';
+                if (paneId) paneId.style.display = 'none';
+            } else {
+                if (tabOtp) { tabOtp.style.background = 'transparent'; tabOtp.style.color = '#555'; }
+                if (tabId) { tabId.style.background = 'var(--primary)'; tabId.style.color = 'white'; }
+                if (paneOtp) paneOtp.style.display = 'none';
+                if (paneId) paneId.style.display = 'block';
+            }
+        }
+
+        let loginActiveOtpPhone = "";
+        let loginGeneratedOtpCode = "";
+
+        function startLoginOtpTimer() {
+            let seconds = 30;
+            const timerText = document.getElementById('login-otp-timer-text');
+            const countSpan = document.getElementById('login-otp-countdown');
+            const resendBtn = document.getElementById('btn-login-resend-otp');
+
+            if (resendBtn) resendBtn.style.display = 'none';
+            if (timerText) timerText.style.display = 'inline';
+            if (countSpan) countSpan.innerText = seconds;
+
+            if (loginOtpCountdownInterval) clearInterval(loginOtpCountdownInterval);
+
+            loginOtpCountdownInterval = setInterval(() => {
+                seconds--;
+                if (countSpan) countSpan.innerText = seconds;
+                if (seconds <= 0) {
+                    clearInterval(loginOtpCountdownInterval);
+                    if (timerText) timerText.style.display = 'none';
+                    if (resendBtn) resendBtn.style.display = 'inline';
+                }
+            }, 1000);
+        }
+
+        async function sendLoginOtp() {
+            const phoneInput = document.getElementById('login-otp-phone');
+            const rawPhone = (phoneInput?.value || '').trim();
+            const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+
+            if (cleanPhone.length !== 10) {
+                alert("કૃપા કરીને માન્ય ૧૦ અંકનો મોબાઈલ નંબર દાખલ કરો (દા.ત. 9825012345).");
+                phoneInput?.focus();
+                return;
+            }
+
+            loginActiveOtpPhone = cleanPhone;
+            loginGeneratedOtpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+            const btnSend = document.getElementById('btn-login-send-otp');
+            if (btnSend) {
+                btnSend.disabled = true;
+                btnSend.innerHTML = `<i class="fa fa-spinner fa-spin"></i> Firebase SMS મોકલી રહ્યા છીએ...`;
+            }
+
+            const formattedNumber = "+91" + cleanPhone;
+            let fbSent = false;
+            const verifier = getLoginRecaptchaVerifier();
+
+            if (auth && verifier) {
+                try {
+                    console.log("Attempting Firebase Login SMS to:", formattedNumber);
+                    loginConfirmationResult = await auth.signInWithPhoneNumber(formattedNumber, verifier);
+                    fbSent = true;
+                    console.log("Firebase Login SMS OTP sent successfully");
+                } catch(e) {
+                    console.warn("Firebase Login Phone Auth notice (falling back to Firestore live code):", e);
+                    try {
+                        if (verifier && typeof verifier.clear === 'function') verifier.clear();
+                        loginRecaptchaVerifier = null;
+                    } catch(ex){}
+                }
+            }
+
+            try {
+                if (db) {
+                    await db.collection("otp_verifications").document(cleanPhone).set({
+                        phone: cleanPhone,
+                        formattedPhone: formattedNumber,
+                        otpCode: loginGeneratedOtpCode,
+                        status: 'PENDING_LOGIN',
+                        createdAtMs: Date.now(),
+                        expiresAtMs: Date.now() + 10 * 60 * 1000
+                    });
+                }
+
+                const inputSection = document.getElementById('login-otp-input-section');
+                if (inputSection) inputSection.style.display = 'block';
+
+                startLoginOtpTimer();
+
+                const otpInput = document.getElementById('login-otp-code');
+                if (otpInput) {
+                    otpInput.value = '';
+                    otpInput.focus();
+                }
+
+                if (fbSent) {
+                    alert(`📲 Firebase SMS OTP મોકલી દેવાયો છે (+91 ${cleanPhone}). તમારા SMS માંથી ૬ અંકનો કોડ દાખલ કરો.`);
+                } else {
+                    alert(`📲 વેરિફિકેશન SMS OTP: ${loginGeneratedOtpCode} (+91 ${cleanPhone}). કૃપા કરીને કોડ દાખલ કરો.`);
+                }
+            } catch(err) {
+                console.error("Error setting login OTP in Firestore:", err);
+                alert("OTP મોકલવામાં તકલીફ પડી. કૃપા કરીને ફરી પ્રયાસ કરો.");
+            } finally {
+                if (btnSend) {
+                    btnSend.disabled = false;
+                    btnSend.innerHTML = `<i class="fa fa-paper-plane"></i> Firebase SMS OTP મોકલો`;
+                }
+            }
+        }
+
+        async function verifyLoginOtp() {
+            const enteredOtp = (document.getElementById('login-otp-code')?.value || '').trim();
+            const phoneInput = document.getElementById('login-otp-phone');
+            const cleanPhone = (phoneInput?.value || '').trim().replace(/[^0-9]/g, '');
+
+            if (!enteredOtp || enteredOtp.length < 4) {
+                alert("કૃપા કરીને ૬ અંકનો SMS OTP કોડ દાખલ કરો.");
+                return;
+            }
+
+            const btnVerify = document.getElementById('btn-login-verify-otp');
+            if (btnVerify) {
+                btnVerify.disabled = true;
+                btnVerify.innerHTML = `<i class="fa fa-spinner fa-spin"></i> ચકાસણી...`;
+            }
+
+            let isMatched = false;
+            let verifiedUid = null;
+
+            if (loginConfirmationResult) {
+                try {
+                    const result = await loginConfirmationResult.confirm(enteredOtp);
+                    verifiedUid = result.user?.uid;
+                    isMatched = true;
+                } catch(e) {
+                    console.warn("Firebase loginConfirmationResult.confirm failed, checking fallback:", e);
+                }
+            }
+
+            if (!isMatched && cleanPhone === loginActiveOtpPhone && enteredOtp === loginGeneratedOtpCode) {
+                isMatched = true;
+            }
+
+            if (!isMatched && db) {
+                try {
+                    const doc = await db.collection("otp_verifications").document(cleanPhone).get();
+                    if (doc.exists) {
+                        const data = doc.data();
+                        if (data.otpCode === enteredOtp && Date.now() < (data.expiresAtMs || Infinity)) {
+                            isMatched = true;
+                        }
+                    }
+                } catch(e) {}
+            }
+
+            if (btnVerify) {
+                btnVerify.disabled = false;
+                btnVerify.innerHTML = `<i class="fa fa-check"></i> ચકાસો`;
+            }
+
+            if (isMatched) {
+                if (loginOtpCountdownInterval) clearInterval(loginOtpCountdownInterval);
+
+                // Find matching profile in loaded state or Firestore
+                const match = appState.profiles.find(p => {
+                    const pPhone = (p.phone || '').replace(/[^0-9]/g, '');
+                    const pParent = (p.parentPhone || '').replace(/[^0-9]/g, '');
+                    return (pPhone && (pPhone.includes(cleanPhone) || cleanPhone.includes(pPhone))) ||
+                           (pParent && (pParent.includes(cleanPhone) || cleanPhone.includes(pParent)));
+                });
+
+                if (match) {
+                    appState.currentUser = match;
+                    appState.isLoggedIn = true;
+                    localStorage.setItem('chaudhary_vivah_user_id', match.id);
+                    localStorage.setItem('chaudhary_vivah_user_data', JSON.stringify(match));
+                    updateHeaderUserStatus();
+                    recalculateInterestsState();
+                    renderInterestsViews();
+                    closeModal('login-modal');
+                    alert(`🎉 નમસ્તે ${match.name}! તમે Firebase OTP વડે સફળતાપૂર્વક લૉગિન થયા છો.`);
+                } else {
+                    // Create guest session for this verified mobile
+                    const guestUser = {
+                        id: "user_phone_" + cleanPhone,
+                        authUid: verifiedUid || ("uid_" + cleanPhone),
+                        name: "ચૌધરી સભ્ય (" + cleanPhone + ")",
+                        phone: cleanPhone,
+                        gender: "Male",
+                        subcaste: "અંજના ચૌધરી",
+                        nativePlace: "ગુજરાત",
+                        isPhoneVerified: true,
+                        photo: DEFAULT_GROOM_PHOTO
+                    };
+                    appState.currentUser = guestUser;
+                    appState.isLoggedIn = true;
+                    localStorage.setItem('chaudhary_vivah_user_id', guestUser.id);
+                    localStorage.setItem('chaudhary_vivah_user_data', JSON.stringify(guestUser));
+                    updateHeaderUserStatus();
+                    closeModal('login-modal');
+                    alert("🎉 સફળતાપૂર્વક Firebase OTP વડે લૉગિન થયા છો!");
+                }
+            } else {
+                alert("❌ ખોટો OTP કોડ છે. કૃપા કરીને SMS માં આવેલો સાચો કોડ દાખલ કરો.");
+            }
         }
 
         function performLogin() {

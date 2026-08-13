@@ -12,5 +12,6 @@ data class ChatMessage(
     val timestamp: String = "",
     val timestampMs: Long = System.currentTimeMillis(),
     val isVoiceNote: Boolean = false,
-    val voiceDurationSec: Int = 0
+    val voiceDurationSec: Int = 0,
+    val audioUrl: String = ""
 )

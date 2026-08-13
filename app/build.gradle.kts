@@ -11,14 +11,14 @@ plugins {
 
 android {
   namespace = "com.example"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  compileSdk = 36
 
   defaultConfig {
     applicationId = "com.aistudio.chaudharyvivah.app"
     minSdk = 24
-    targetSdk = 36
-    versionCode = 9
-    versionName = "9.0"
+    targetSdk = 35
+    versionCode = 41
+    versionName = "41.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -38,6 +38,8 @@ android {
         keyAlias = "androiddebugkey"
         keyPassword = "android"
       }
+      isV1SigningEnabled = true
+      isV2SigningEnabled = true
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
@@ -103,14 +105,15 @@ dependencies {
   // implementation(libs.androidx.room.runtime)
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
+  // implementation(libs.firebase.ai)
   implementation(libs.firebase.firestore)
   implementation(libs.firebase.auth)
+  implementation(libs.firebase.messaging)
   implementation(libs.firebase.storage)
   implementation(libs.androidx.credentials)
   implementation(libs.androidx.credentials.play.services)
   implementation(libs.googleid)
-  implementation(libs.firebase.appcheck.recaptcha)
+  // implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.logging.interceptor)

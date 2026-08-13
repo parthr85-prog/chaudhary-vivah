@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -29,9 +30,7 @@ import coil.compose.AsyncImage
 import com.example.R
 import com.example.model.InterestRequest
 import com.example.model.Profile
-import com.example.ui.theme.RoyalGold
-import com.example.ui.theme.RoyalMaroon
-import com.example.ui.theme.VerifiedGreen
+import com.example.ui.theme.*
 import com.example.ui.viewmodel.MatrimonyViewModel
 import com.example.util.LocaleStrings
 
@@ -44,37 +43,132 @@ fun InterestsScreen(
     onNavigateToChat: (String) -> Unit
 ) {
     val appLanguage by viewModel.appLanguage.collectAsState()
+    val isDeletingAccount by viewModel.isDeletingAccount.collectAsState()
+
+    if (isDeletingAccount) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { /* strictly wait */ },
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+        ) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCream),
+                border = androidx.compose.foundation.BorderStroke(2.dp, RoyalGold),
+                modifier = Modifier.padding(16.dp).fillMaxWidth(0.88f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(48.dp),
+                        color = Color.Red,
+                        strokeWidth = 4.dp
+                    )
+                    Text(
+                        text = if (appLanguage == "gu") "એકાઉન્ટ ડિલીટ થઈ રહ્યું છે..." else "Deleting Account...",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Color.Red,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Text(
+                        text = if (appLanguage == "gu") "કૃપા કરીને રાહ જુઓ, ફાયરબેઝમાંથી તમારો તમામ ડેટા કાયમી ધોરણે રદ થઈ રહ્યો છે." else "Please wait, all your data is being permanently deleted from Firebase.",
+                        fontSize = 12.sp,
+                        color = Color.DarkGray,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        }
+    }
     val strings = LocaleStrings.getStrings(appLanguage)
     val userInterests by viewModel.userInterests.collectAsState()
     val allProfiles by viewModel.allProfiles.collectAsState()
     val myProfile by viewModel.myProfile.collectAsState()
+    val isAdmin by viewModel.isAdmin.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     var selectedTabIndex by remember { mutableStateOf(0) }
     var showChatLockDialog by remember { mutableStateOf<String?>(null) }
     var showBlockDialogForTarget by remember { mutableStateOf<Profile?>(null) }
-    var showMatchCompleteDeleteDialog by remember { mutableStateOf(false) }
-    var partnerNameInput by remember { mutableStateOf("") }
+    var showLockedBioDataForProfile by remember { mutableStateOf<Profile?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     val authUid = com.example.service.FirebaseAuthService.currentUser?.uid ?: ""
     val pid = myProfile.id
-    val myIds = remember(pid, authUid) {
-        setOfNotNull(
-            pid.takeIf { it.isNotBlank() },
-            authUid.takeIf { it.isNotBlank() },
-            "USER_ME"
-        )
+    val myIds = remember(myProfile, allProfiles, authUid) {
+        val set = mutableSetOf<String>()
+        if (pid.isNotBlank()) {
+            set.add(pid)
+            val cleanPid = pid.replace(Regex("[^0-9]"), "").takeLast(10)
+            if (cleanPid.length == 10) {
+                set.add(cleanPid)
+                set.add("USER_$cleanPid")
+            }
+        }
+        if (authUid.isNotBlank()) set.add(authUid)
+        if (myProfile.phoneContact.isNotBlank()) {
+            val cleanPhone = myProfile.phoneContact.replace(Regex("[^0-9]"), "").takeLast(10)
+            set.add(myProfile.phoneContact)
+            set.add("USER_${myProfile.phoneContact}")
+            if (cleanPhone.length == 10) {
+                set.add(cleanPhone)
+                set.add("USER_$cleanPhone")
+            }
+        }
+        if (myProfile.parentPhoneContact.isNotBlank()) {
+            val cleanParent = myProfile.parentPhoneContact.replace(Regex("[^0-9]"), "").takeLast(10)
+            set.add(myProfile.parentPhoneContact)
+            set.add("USER_${myProfile.parentPhoneContact}")
+            if (cleanParent.length == 10) {
+                set.add(cleanParent)
+                set.add("USER_$cleanParent")
+            }
+        }
+        set.add("USER_ME")
+
+        allProfiles.forEach { p ->
+            val matchesAuth = authUid.isNotBlank() && (p.id == authUid || p.phoneContact == authUid)
+            val matchesPid = pid.isNotBlank() && (p.id == pid || p.phoneContact == pid)
+            val matchesPhone = myProfile.phoneContact.isNotBlank() && (
+                p.phoneContact == myProfile.phoneContact || 
+                (myProfile.phoneContact.length >= 10 && p.phoneContact.endsWith(myProfile.phoneContact.takeLast(10)))
+            )
+            if (matchesAuth || matchesPid || matchesPhone) {
+                if (p.id.isNotBlank()) set.add(p.id)
+                if (p.phoneContact.isNotBlank()) {
+                    val cleanP = p.phoneContact.replace(Regex("[^0-9]"), "").takeLast(10)
+                    set.add(p.phoneContact)
+                    set.add("USER_${p.phoneContact}")
+                    if (cleanP.length == 10) {
+                        set.add(cleanP)
+                        set.add("USER_$cleanP")
+                    }
+                }
+            }
+        }
+        set
     }
 
     // Received Interests (others sent to me)
     val receivedInterests = userInterests.filter { req ->
-        (myIds.contains(req.receiverId) || req.receiverId == "USER_ME") &&
-        !myIds.contains(req.senderId)
+        val matchesReceiver = myIds.contains(req.receiverId) ||
+                (req.receiverPhone.isNotBlank() && myIds.contains(req.receiverPhone)) ||
+                req.receiverId == "USER_ME"
+        val matchesSender = myIds.contains(req.senderId) ||
+                (req.senderPhone.isNotBlank() && myIds.contains(req.senderPhone))
+        matchesReceiver && !matchesSender && req.status != "BLOCKED"
     }
     // Sent Interests (I sent to others)
     val sentInterests = userInterests.filter { req ->
-        myIds.contains(req.senderId) || req.senderId == "USER_ME"
+        val matchesReceiver = myIds.contains(req.receiverId) ||
+                (req.receiverPhone.isNotBlank() && myIds.contains(req.receiverPhone))
+        val matchesSender = myIds.contains(req.senderId) ||
+                (req.senderPhone.isNotBlank() && myIds.contains(req.senderPhone)) ||
+                req.senderId == "USER_ME"
+        matchesSender && !matchesReceiver && req.status != "BLOCKED"
     }
     // Blocked Profiles
     val blockedProfiles = remember(allProfiles, userInterests, myProfile) {
@@ -103,7 +197,7 @@ fun InterestsScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = RoyalMaroon)
@@ -122,64 +216,13 @@ fun InterestsScreen(
                     .fillMaxSize()
                     .background(Color(0xFFFBF8F5))
             ) {
-            // Match Finalized & Delete Account Card Banner
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, RoyalGold),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.VolunteerActivism, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(28.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = if (appLanguage == "gu") "🎉 લગ્ન / સગાઈ નક્કી થઈ ગઈ?" else "🎉 Match Completed?",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = RoyalMaroon
-                            )
-                            Text(
-                                text = if (appLanguage == "gu") "સગાઈ/લગ્ન નક્કી થવા પર એકાઉન્ટ ડિલીટ કરો" else "Delete profile on match finalization",
-                                fontSize = 11.sp,
-                                color = Color.DarkGray
-                            )
-                        }
-                    }
-                    Button(
-                        onClick = { showMatchCompleteDeleteDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Icon(Icons.Default.DeleteForever, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (appLanguage == "gu") "એકાઉન્ટ રદ કરો" else "Delete Account",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-
             // Tab Header
             TabRow(
                 selectedTabIndex = selectedTabIndex,
                 containerColor = Color.White,
                 contentColor = RoyalMaroon,
                 indicator = { tabPositions ->
-                    TabRowDefaults.Indicator(
+                    TabRowDefaults.SecondaryIndicator(
                         modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
                         color = RoyalMaroon,
                         height = 3.dp
@@ -205,7 +248,7 @@ fun InterestsScreen(
                     onClick = { selectedTabIndex = 1 },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = if (appLanguage == "gu") "મેં મોકલેલ (${sentInterests.size})" else "Sent (${sentInterests.size})",
@@ -365,6 +408,10 @@ fun InterestsScreen(
                         val targetProfile = allProfiles.find { it.id == targetProfileId }
                             ?: Profile(id = targetProfileId, fullName = if (selectedTabIndex == 0) item.senderName else item.receiverName)
 
+                        val isAccepted = item.status == "ACCEPTED" || viewModel.isInterestAccepted(targetProfile.id)
+                        val isOwnProfile = targetProfile.id == myProfile.id
+                        val canViewFull = isAdmin || isOwnProfile || isAccepted
+
                         InterestCardItem(
                             request = item,
                             targetProfile = targetProfile,
@@ -373,7 +420,13 @@ fun InterestsScreen(
                             onAccept = { viewModel.acceptInterest(item.id) },
                             onReject = { viewModel.rejectInterest(item.id) },
                             onRemoveOrBlock = { showBlockDialogForTarget = targetProfile },
-                            onViewDetail = { onNavigateToProfileDetail(targetProfile.id) },
+                            onViewDetail = {
+                                if (canViewFull) {
+                                    onNavigateToProfileDetail(targetProfile.id)
+                                } else {
+                                    showLockedBioDataForProfile = targetProfile
+                                }
+                            },
                             onChatClick = {
                                 if (item.status == "ACCEPTED") {
                                     onNavigateToChat(targetProfile.id)
@@ -472,69 +525,100 @@ fun InterestsScreen(
         )
     }
 
-    if (showMatchCompleteDeleteDialog) {
+    showLockedBioDataForProfile?.let { targetProfile ->
+        val isInterestSent = targetProfile.interestStatus == "SENT" || targetProfile.interestStatus == "ACCEPTED" || sentInterests.any { it.receiverId == targetProfile.id }
         AlertDialog(
-            onDismissRequest = { showMatchCompleteDeleteDialog = false },
+            onDismissRequest = { showLockedBioDataForProfile = null },
             icon = {
-                Icon(Icons.Default.VolunteerActivism, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(40.dp))
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = RoyalMaroon,
+                    modifier = Modifier.size(36.dp)
+                )
             },
             title = {
                 Text(
-                    text = if (appLanguage == "gu") "સગાઈ/લગ્ન નક્કી થવા પર એકાઉન્ટ ડિલીટ કરો" else "Delete Account - Match Completed",
+                    text = if (appLanguage == "gu") "સંપૂર્ણ બાયોડેટા લોક છે (Bio-Data Locked)" else "Bio-Data Locked",
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
-                    color = RoyalMaroon
+                    color = RoyalMaroon,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
                         text = if (appLanguage == "gu")
-                            "અભિનંદન! જો તમારું સગાઈ કે લગ્ન નક્કી થઈ ગયું હોય, તો તમારું એકાઉન્ટ ડિલીટ કરવાથી તમારી પ્રોફાઇલ, બાયોડેટા અને ફોટા ચૌધરી મેટ્રિમોની પોર્ટલ પરથી કાયમી ધોરણે દૂર થઈ જશે જેથી તમને વધુ પ્રસ્તાવો ન મળે."
+                            "ચૌધરી વિવાહ પર ગોપનીયતા અને મર્યાદા જાળવવા માટે, ${targetProfile.fullName} નો સંપૂર્ણ બાયોડેટા અને સંચાલન વિગતો ફક્ત ત્યારે જ જોઈ શકાશે જ્યારે સામેના સભ્ય તમારો 'રસ/પ્રસ્તાવ (Interest Request)' સ્વીકારશે."
                         else
-                            "Congratulations on finding your match! Deleting your account will permanently remove your profile, bio-data, and photos from the portal so you no longer receive proposals.",
+                            "To preserve privacy on Chaudhary Vivah, full bio-data and contact details of ${targetProfile.fullName} will only be visible after they accept your Interest Request.",
                         fontSize = 13.sp,
-                        color = Color.DarkGray
+                        color = Color.DarkGray,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        lineHeight = 18.sp
                     )
-
-                    OutlinedTextField(
-                        value = partnerNameInput,
-                        onValueChange = { partnerNameInput = it },
-                        label = { Text(if (appLanguage == "gu") "જીવનસાથીનું નામ (ઓપ્શનલ)" else "Partner Name (Optional)") },
-                        placeholder = { Text("જેમ કે: રમેશભાઈ ચૌધરી") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (isInterestSent) {
+                        Surface(
+                            color = VerifiedGreenContainer,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (appLanguage == "gu")
+                                    "✓ તમે આ સભ્યને લગ્ન પ્રસ્તાવ મોકલેલ છે. સામે પક્ષ દ્વારા સ્વીકાર થયા પછી સંપૂર્ણ પ્રોફાઇલ અનલોક થશે."
+                                else
+                                    "✓ You have sent an interest request to this member. The full profile will be unlocked after they accept.",
+                                fontSize = 12.sp,
+                                color = VerifiedGreen,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(10.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = if (appLanguage == "gu")
+                                "કૃપા કરીને નીચે આપેલ બટન પર ક્લિક કરી પ્રથમ રસ દાખવો/પ્રસ્તાવ મોકલો."
+                            else
+                                "Please click the button below to send an interest request first.",
+                            fontSize = 12.sp,
+                            color = RoyalMaroon,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        showMatchCompleteDeleteDialog = false
-                        viewModel.deleteAccountOnMatchComplete(
-                            partnerName = partnerNameInput,
-                            onSuccess = {
-                                android.widget.Toast.makeText(
-                                    context,
-                                    if (appLanguage == "gu") "હાર્દિક વાધાઈ! તમારું એકાઉન્ટ સફળતાપૂર્વક ડિલીટ કરાયું છે. સુખી દામ્પત્ય જીવનની શુભકામનાઓ!" else "Congratulations! Your account has been deleted. Wish you a happy married life!",
-                                    android.widget.Toast.LENGTH_LONG
-                                ).show()
-                            },
-                            onError = { err ->
-                                android.widget.Toast.makeText(context, err, android.widget.Toast.LENGTH_SHORT).show()
-                            }
-                        )
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-                ) {
-                    Icon(Icons.Default.DeleteForever, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (appLanguage == "gu") "હા, એકાઉન્ટ ડિલીટ કરો" else "Yes, Delete Account", color = Color.White, fontWeight = FontWeight.Bold)
+                if (!isInterestSent) {
+                    Button(
+                        onClick = {
+                            viewModel.sendInterest(targetProfile.id)
+                            showLockedBioDataForProfile = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (appLanguage == "gu") "રસ દાખવો (Send Interest)" else "Send Interest", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                } else {
+                    Button(
+                        onClick = { showLockedBioDataForProfile = null },
+                        colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon)
+                    ) {
+                        Text(if (appLanguage == "gu") "સમજાયું (OK)" else "OK", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showMatchCompleteDeleteDialog = false }) {
-                    Text(if (appLanguage == "gu") "રદ કરો" else "Cancel")
+                TextButton(onClick = { showLockedBioDataForProfile = null }) {
+                    Text(if (appLanguage == "gu") "બંધ કરો (Close)" else "Close", color = Color.Gray)
                 }
             }
         )
@@ -632,7 +716,7 @@ fun InterestCardItem(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            Divider(color = Color(0xFFEEEEEE), thickness = 1.dp)
+            HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 1.dp)
             Spacer(modifier = Modifier.height(10.dp))
 
             Row(
@@ -700,7 +784,7 @@ fun InterestCardItem(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Icon(
-                        imageVector = if (isChatUnlocked) Icons.Default.Chat else Icons.Default.Lock,
+                        imageVector = if (isChatUnlocked) Icons.AutoMirrored.Filled.Chat else Icons.Default.Lock,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )

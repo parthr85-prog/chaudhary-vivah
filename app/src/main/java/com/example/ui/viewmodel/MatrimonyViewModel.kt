@@ -54,11 +54,6 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
     )
     val myProfile: StateFlow<Profile> = _myProfile.asStateFlow()
 
-    // User Interest Requests Stream
-    val userInterests: StateFlow<List<InterestRequest>> = _myProfile.flatMapLatest { profile ->
-        repository.getAllInterestsForUser(profile.id.ifBlank { "USER_ME" })
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     suspend fun checkIsUserRegistered(uid: String, contactInfo: String): Pair<Boolean, Profile?> {
         val firestoreProfile = repository.fetchProfileDirectFromFirestore(uid)
         if (firestoreProfile != null && firestoreProfile.fullName.isNotBlank()) {
@@ -84,6 +79,18 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
         return Pair(false, null)
     }
 
+    fun checkMobileRegistered(mobile: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val trimmed = mobile.trim()
+            if (trimmed == "9724327777" || trimmed.equals("srushtichaudhary11@gmail.com", ignoreCase = true)) {
+                onResult(true)
+                return@launch
+            }
+            val (isReg, _) = checkIsUserRegistered("", trimmed)
+            onResult(isReg)
+        }
+    }
+
     // Persistent Preferences & Language State
     private val prefs = application.getSharedPreferences("vivah_prefs", android.content.Context.MODE_PRIVATE)
 
@@ -98,11 +105,28 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    private val _isDeletingAccount = MutableStateFlow(false)
+    val isDeletingAccount: StateFlow<Boolean> = _isDeletingAccount.asStateFlow()
+
+    fun attachRealtimeSync() {
+        val appCtx = getApplication<Application>()
+        repository.startRealtimeSync(
+            context = appCtx,
+            coroutineScope = viewModelScope,
+            currentUserIdProvider = {
+                _myProfile.value.id.ifBlank { com.example.service.FirebaseAuthService.currentUser?.uid ?: "USER_ME" }
+            },
+            currentDeviceId = currentDeviceId
+        )
+    }
+
     fun refreshDashboard() {
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                repository.syncFirestoreProfiles()
+                attachRealtimeSync()
+                repository.forceServerSyncOnLogin(_myProfile.value.id)
+                checkSubscriptionExpiryStatus()
             } catch (e: Exception) {
                 android.util.Log.e("MatrimonyViewModel", "Error refreshing dashboard", e)
             } finally {
@@ -113,7 +137,9 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
 
     // Login & Auth State
     private val _isAdmin = MutableStateFlow(
-        com.example.service.FirebaseAuthService.currentUser?.email?.trim()?.equals("srushtichaudhary11@gmail.com", ignoreCase = true) == true
+        com.example.service.FirebaseAuthService.currentUser?.email?.trim()?.let {
+            it.startsWith("9724327777") || it.equals("srushtichaudhary11@gmail.com", ignoreCase = true)
+        } == true
     )
     val isAdmin: StateFlow<Boolean> = _isAdmin.asStateFlow()
 
@@ -140,6 +166,24 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
     // Raw Profiles from DB
     val allProfiles: StateFlow<List<Profile>> = repository.allProfiles
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // User Interest Requests Stream
+    val userInterests: StateFlow<List<InterestRequest>> = combine(
+        _myProfile,
+        allProfiles,
+        repository.allInterests
+    ) { myProfile, profiles, interests ->
+        val myIds = repository.getMyUserIds(myProfile.id)
+        interests.filter { req ->
+            val matchesSender = myIds.contains(req.senderId) || 
+                    (req.senderPhone.isNotBlank() && myIds.contains(req.senderPhone)) || 
+                    req.senderId == "USER_ME"
+            val matchesReceiver = myIds.contains(req.receiverId) || 
+                    (req.receiverPhone.isNotBlank() && myIds.contains(req.receiverPhone)) || 
+                    req.receiverId == "USER_ME"
+            matchesSender || matchesReceiver
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Shortlisted Profiles
     val shortlistedProfiles: StateFlow<List<Profile>> = repository.shortlistedProfiles
@@ -313,95 +357,6 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Top 5 AI Picks Model & Matching Algorithm
-    data class AIPickMatch(
-        val profile: Profile,
-        val matchPercentage: Int,
-        val matchReasons: List<String>
-    )
-
-    val top5AIPicks: StateFlow<List<AIPickMatch>> = combine(
-        allProfiles,
-        _myProfile,
-        searchGender,
-        selectedSubCaste,
-        selectedLocality
-    ) { list, user, gender, subCasteFilter, localityFilter ->
-        list.filter { p ->
-            val isUserGroom = isMaleGender(user.gender)
-            val isUserBride = isFemaleGender(user.gender)
-
-            val matchesTarget = when {
-                isAdmin.value -> true
-                isUserGroom -> isFemaleGender(p.gender)
-                isUserBride -> isMaleGender(p.gender)
-                else -> true
-            }
-
-            !isSameProfile(p, user) && p.isApproved && matchesTarget && isChaudharyCommunityMatchAllowed(user, p)
-        }.distinctBy { it.id }.map { candidate ->
-            var score = 55
-            val reasons = mutableListOf<String>()
-
-            // Gol match algorithm (Chaudhary samaj preference)
-            if (user.gol.isNotBlank() && candidate.gol.isNotBlank() && candidate.gol.equals(user.gol, ignoreCase = true)) {
-                score += 20
-                reasons.add("સમાન ગોળ (Same Gol): ${candidate.gol}")
-            }
-
-            // Sub-caste match algorithm
-            if (candidate.subCaste.equals(user.subCaste, ignoreCase = true) ||
-                (subCasteFilter != "All Sub-castes" && subCasteFilter != "બધી સબ-કાસ્ટ" && candidate.subCaste.equals(subCasteFilter, ignoreCase = true))) {
-                score += 20
-                reasons.add("સબ-કાસ્ટ: ${candidate.subCaste}")
-            }
-
-            // Location preference algorithm
-            if (candidate.locality.equals(user.locality, ignoreCase = true) ||
-                candidate.currentCity.equals(user.currentCity, ignoreCase = true) ||
-                (localityFilter != "All Regions" && localityFilter != "બધા પ્રદેશો" && candidate.locality.equals(localityFilter, ignoreCase = true))) {
-                score += 15
-                reasons.add("પ્રદેશ: ${candidate.locality}")
-            } else {
-                reasons.add("શહેર: ${candidate.currentCity}")
-            }
-
-            // Gotra Exogamy Safety check
-            if (user.gotra.isNotBlank() && !candidate.gotra.equals(user.gotra, ignoreCase = true) &&
-                !candidate.motherGotra.equals(user.gotra, ignoreCase = true)) {
-                score += 10
-                reasons.add("ગોત્ર સુરક્ષિત (${candidate.gotra})")
-            }
-
-            // Aadhar verification preference
-            if (candidate.isAadharVerified) {
-                score += 5
-                reasons.add("આધાર પ્રમાણિત")
-            }
-
-            val finalScore = score.coerceAtMost(98)
-            AIPickMatch(candidate, finalScore, reasons)
-        }.sortedByDescending { it.matchPercentage }
-            .take(5)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // Top 5 AI Picks State
-    private val _topPickReasons = MutableStateFlow<Map<String, String>>(emptyMap())
-    val topPickReasons: StateFlow<Map<String, String>> = _topPickReasons.asStateFlow()
-
-    private val _isGeneratingTopPicks = MutableStateFlow(false)
-    val isGeneratingTopPicks: StateFlow<Boolean> = _isGeneratingTopPicks.asStateFlow()
-
-    // Kundli Calculation State
-    private val _selectedKundliPartner = MutableStateFlow<Profile?>(null)
-    val selectedKundliPartner: StateFlow<Profile?> = _selectedKundliPartner.asStateFlow()
-
-    private val _kundliResult = MutableStateFlow<Pair<Int, String>?>(null)
-    val kundliResult: StateFlow<Pair<Int, String>?> = _kundliResult.asStateFlow()
-
-    private val _isCalculatingKundli = MutableStateFlow(false)
-    val isCalculatingKundli: StateFlow<Boolean> = _isCalculatingKundli.asStateFlow()
-
     // AI Voice Bio Assistant
     private val _generatedVoiceBio = MutableStateFlow("")
     val generatedVoiceBio: StateFlow<String> = _generatedVoiceBio.asStateFlow()
@@ -429,18 +384,22 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    val freeSchemeClaimedCount: StateFlow<Int> = combine(
+        repository.freeSubscriberCount,
+        allProfiles
+    ) { firestoreCounter, profilesList ->
+        val registeredCount = profilesList.count { it.fullName.isNotBlank() }
+        val usedCount = profilesList.count { it.isFreeSchemeUsed }
+        val baseMin = if (profilesList.isNotEmpty()) 1 else 0
+        maxOf(firestoreCounter, registeredCount, usedCount, baseMin)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1)
+
     init {
-        val appCtx = getApplication<Application>()
-        repository.startRealtimeSync(
-            context = appCtx,
-            coroutineScope = viewModelScope,
-            currentUserIdProvider = {
-                _myProfile.value.id.ifBlank { com.example.service.FirebaseAuthService.currentUser?.uid ?: "USER_ME" }
-            },
-            currentDeviceId = currentDeviceId
-        )
         viewModelScope.launch {
+            com.example.service.FirebaseAuthService.ensureAuth()
+            attachRealtimeSync()
             repository.syncFirestoreProfiles()
+            checkSubscriptionExpiryStatus()
         }
         viewModelScope.launch {
             val currentUser = com.example.service.FirebaseAuthService.currentUser
@@ -450,8 +409,18 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
                 if (isRegistered && registeredProfile != null) {
                     _myProfile.value = registeredProfile
                     updateDefaultSearchGender()
+                } else {
+                    val localDraft = loadDraftLocally()
+                    if (localDraft != null && localDraft.fullName.isNotBlank()) {
+                        _myProfile.value = localDraft.copy(id = currentUser.uid)
+                    }
                 }
                 recordCurrentDeviceLogin()
+            } else {
+                val localDraft = loadDraftLocally()
+                if (localDraft != null && localDraft.fullName.isNotBlank()) {
+                    _myProfile.value = localDraft
+                }
             }
         }
         viewModelScope.launch {
@@ -545,41 +514,110 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
         _isLoggedIn.value = false
         _isAdmin.value = false
         _myProfile.value = Profile(id = "USER_ME")
+        repository.clearLocalMemoryCache()
     }
 
-    fun signInWithGoogle(context: android.content.Context, role: String, onError: (String) -> Unit, onSuccess: (isNewUser: Boolean) -> Unit) {
+    fun verifyMobileAndSignInOnServer(
+        mobileOrEmail: String,
+        pass: String,
+        role: String,
+        context: android.content.Context,
+        onError: (String) -> Unit,
+        onNoInternet: () -> Unit,
+        onNotRegistered: () -> Unit,
+        onSuccess: (isNewUser: Boolean) -> Unit
+    ) {
         viewModelScope.launch {
             _isAuthenticating.value = true
-            val result = com.example.service.FirebaseAuthService.signInWithGoogle(context)
-            result.onSuccess { firebaseUser ->
-                val userName = firebaseUser.displayName.takeIf { !it.isNullOrBlank() } ?: ""
-                val photoUrl = firebaseUser.photoUrl?.toString() ?: ""
-                val userEmail = firebaseUser.email ?: ""
-                val isTargetAdmin = userEmail.trim().equals("srushtichaudhary11@gmail.com", ignoreCase = true)
-                _isAdmin.value = isTargetAdmin
+            val rawInput = mobileOrEmail.trim()
+            val isMobileNumber = rawInput.length == 10 && rawInput.all { it.isDigit() }
 
-                val (isRegistered, registeredProfile) = checkIsUserRegistered(firebaseUser.uid, userEmail)
-                loginUser(role)
-                if (isRegistered && registeredProfile != null) {
-                    _myProfile.value = registeredProfile.copy(isApproved = if (isTargetAdmin) true else registeredProfile.isApproved)
-                    updateDefaultSearchGender()
-                    onSuccess(false) // Registered -> Navigate to home/dashboard
-                } else {
-                    _myProfile.value = Profile(
-                        id = firebaseUser.uid,
-                        fullName = if (isTargetAdmin) "Srushti Chaudhary (Admin)" else userName,
-                        gender = determineUserGenderFromRole(role),
-                        phoneContact = userEmail,
-                        profileImageUrl = photoUrl,
-                        isApproved = isTargetAdmin
-                    )
-                    updateDefaultSearchGender()
-                    onSuccess(!isTargetAdmin) // New user -> Navigate to registration form
-                }
-            }.onFailure { e ->
-                onError(e.localizedMessage ?: "ગૂગલ લૉગિન નિષ્ફળ ગયું")
+            // 1. Strict Internet Connection check
+            if (!repository.isNetworkAvailable(context)) {
+                _isAuthenticating.value = false
+                onNoInternet()
+                return@launch
             }
-            _isAuthenticating.value = false
+
+            val isTargetAdmin = rawInput == "9724327777" || rawInput.equals("srushtichaudhary11@gmail.com", ignoreCase = true)
+            if (isTargetAdmin && pass.isNotBlank() && pass != "JulieSrushti@6863") {
+                _isAuthenticating.value = false
+                onError("એડમિન એકાઉન્ટ પાસવર્ડ ખોટો છે (Invalid Admin Password)")
+                return@launch
+            }
+
+            if (isMobileNumber) {
+                // Perform strict check on Firebase Auth / Firestore SERVER
+                val (checkResult, registeredProfile) = repository.checkMobileRegistrationOnServer(context, rawInput)
+                when (checkResult) {
+                    MatrimonyRepository.MobileServerCheckResult.NO_INTERNET -> {
+                        _isAuthenticating.value = false
+                        onNoInternet()
+                    }
+                    MatrimonyRepository.MobileServerCheckResult.NOT_REGISTERED -> {
+                        _isAuthenticating.value = false
+                        onNotRegistered()
+                    }
+                    MatrimonyRepository.MobileServerCheckResult.REGISTERED -> {
+                        // User is registered! Clear memory cache and force server sync
+                        repository.clearLocalMemoryCache()
+                        _isAdmin.value = isTargetAdmin
+                        loginUser(role)
+
+                        // Force sync all data directly from Firestore SERVER
+                        val syncUser = registeredProfile?.id ?: "USER_$rawInput"
+                        repository.forceServerSyncOnLogin(syncUser)
+
+                        if (registeredProfile != null) {
+                            _myProfile.value = registeredProfile.copy(isApproved = if (isTargetAdmin) true else registeredProfile.isApproved)
+                        } else if (isTargetAdmin) {
+                            _myProfile.value = Profile(
+                                id = "ADMIN_SRUSHTI",
+                                fullName = "Chaudhary Admin (9724327777)",
+                                gender = "Groom",
+                                phoneContact = "9724327777",
+                                parentPhoneContact = "9724327777",
+                                isApproved = true
+                            )
+                        }
+                        updateDefaultSearchGender()
+                        _isAuthenticating.value = false
+                        onSuccess(false)
+                    }
+                }
+            } else {
+                // Email login flow
+                val result = com.example.service.FirebaseAuthService.signInWithEmail(rawInput, pass)
+                result.onSuccess { firebaseUser ->
+                    repository.clearLocalMemoryCache()
+                    _isAdmin.value = isTargetAdmin
+                    loginUser(role)
+                    repository.forceServerSyncOnLogin(firebaseUser.uid)
+
+                    val (isRegistered, registeredProfile) = checkIsUserRegistered(firebaseUser.uid, rawInput)
+                    if (isRegistered && registeredProfile != null) {
+                        _myProfile.value = registeredProfile.copy(isApproved = if (isTargetAdmin) true else registeredProfile.isApproved)
+                    } else {
+                        _myProfile.value = Profile(
+                            id = firebaseUser.uid,
+                            fullName = rawInput,
+                            gender = determineUserGenderFromRole(role),
+                            phoneContact = rawInput,
+                            parentPhoneContact = rawInput,
+                            isApproved = false
+                        )
+                    }
+                    updateDefaultSearchGender()
+                    onSuccess(false)
+                }.onFailure { e ->
+                    if (!repository.isNetworkAvailable(context)) {
+                        onNoInternet()
+                    } else {
+                        onError("ઈમેલ/પાસવર્ડ ખોટો છે અથવા નોંધણી થઈ નથી.")
+                    }
+                }
+                _isAuthenticating.value = false
+            }
         }
     }
 
@@ -588,78 +626,200 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
             _isAuthenticating.value = true
             val rawInput = email.trim()
             val isMobileNumber = rawInput.length == 10 && rawInput.all { it.isDigit() }
-            val authEmail = if (isMobileNumber) "$rawInput@chaudhari.com" else rawInput
 
-            val isTargetAdmin = rawInput.equals("srushtichaudhary11@gmail.com", ignoreCase = true)
+            val isTargetAdmin = rawInput == "9724327777" || rawInput.equals("srushtichaudhary11@gmail.com", ignoreCase = true)
             if (isTargetAdmin && pass != "JulieSrushti@6863") {
                 _isAuthenticating.value = false
                 onError("એડમિન એકાઉન્ટ પાસવર્ડ ખોટો છે (Invalid Admin Password)")
                 return@launch
             }
 
-            val result = com.example.service.FirebaseAuthService.signInWithEmail(authEmail, pass)
-            result.onSuccess { firebaseUser ->
-                val userEmail = firebaseUser.email ?: authEmail
-                val defaultName = if (isTargetAdmin) "Srushti Chaudhary (Admin)" else rawInput
-                _isAdmin.value = isTargetAdmin
-
-                val (isRegistered, registeredProfile) = checkIsUserRegistered(firebaseUser.uid, rawInput)
-                if (isRegistered && registeredProfile != null) {
-                    loginUser(role)
-                    _myProfile.value = registeredProfile.copy(isApproved = if (isTargetAdmin) true else registeredProfile.isApproved)
-                    updateDefaultSearchGender()
-                    onSuccess(false)
-                } else if (isTargetAdmin) {
-                    loginUser(role)
-                    _myProfile.value = Profile(
-                        id = firebaseUser.uid,
-                        fullName = defaultName,
-                        gender = determineUserGenderFromRole(role),
-                        phoneContact = userEmail,
-                        isApproved = true
-                    )
-                    updateDefaultSearchGender()
-                    onSuccess(false)
-                } else {
-                    loginUser(role)
-                    _myProfile.value = Profile(
-                        id = firebaseUser.uid,
-                        fullName = rawInput,
-                        gender = determineUserGenderFromRole(role),
-                        phoneContact = rawInput,
-                        parentPhoneContact = rawInput,
-                        isApproved = false
-                    )
-                    updateDefaultSearchGender()
-                    onSuccess(false)
-                }
-            }.onFailure { e ->
-                // Fallback: Check if user exists in Firestore or memory by phone/email
+            if (isMobileNumber) {
                 val (isRegistered, registeredProfile) = checkIsUserRegistered("USER_$rawInput", rawInput)
                 if (isRegistered && registeredProfile != null) {
+                    repository.clearLocalMemoryCache()
                     _isAdmin.value = isTargetAdmin
                     loginUser(role)
-                    _myProfile.value = registeredProfile
+                    repository.forceServerSyncOnLogin(registeredProfile.id)
+                    _myProfile.value = registeredProfile.copy(isApproved = if (isTargetAdmin) true else registeredProfile.isApproved)
                     updateDefaultSearchGender()
+                    _isAuthenticating.value = false
                     onSuccess(false)
                 } else if (isTargetAdmin && pass == "JulieSrushti@6863") {
+                    repository.clearLocalMemoryCache()
                     _isAdmin.value = true
                     _myProfile.value = Profile(
                         id = "ADMIN_SRUSHTI",
-                        fullName = "Srushti Chaudhary (Admin)",
+                        fullName = "Chaudhary Admin (9724327777)",
                         gender = "Groom",
-                        phoneContact = "srushtichaudhary11@gmail.com",
+                        phoneContact = "9724327777",
+                        parentPhoneContact = "9724327777",
                         isApproved = true
                     )
                     loginUser(role)
+                    repository.forceServerSyncOnLogin("ADMIN_SRUSHTI")
                     updateDefaultSearchGender()
+                    _isAuthenticating.value = false
                     onSuccess(false)
                 } else {
-                    onError("મોબાઈલ નંબર/ઈમેલ નોંધાયેલ નથી. કૃપા કરીને નવી નોંધણી (Registration) કરો.")
+                    _isAuthenticating.value = false
+                    onError("મોબાઈલ નંબર નોંધાયેલ નથી. કૃપા કરીને નવી નોંધણી (Registration) કરો.")
                 }
+            } else {
+                val result = com.example.service.FirebaseAuthService.signInWithEmail(rawInput, pass)
+                result.onSuccess { firebaseUser ->
+                    repository.clearLocalMemoryCache()
+                    val userEmail = firebaseUser.email ?: rawInput
+                    val defaultName = if (isTargetAdmin) "Chaudhary Admin (9724327777)" else rawInput
+                    _isAdmin.value = isTargetAdmin
+
+                    val (isRegistered, registeredProfile) = checkIsUserRegistered(firebaseUser.uid, rawInput)
+                    if (isRegistered && registeredProfile != null) {
+                        loginUser(role)
+                        repository.forceServerSyncOnLogin(registeredProfile.id)
+                        _myProfile.value = registeredProfile.copy(isApproved = if (isTargetAdmin) true else registeredProfile.isApproved)
+                        updateDefaultSearchGender()
+                        onSuccess(false)
+                    } else {
+                        loginUser(role)
+                        repository.forceServerSyncOnLogin(firebaseUser.uid)
+                        _myProfile.value = Profile(
+                            id = firebaseUser.uid,
+                            fullName = rawInput,
+                            gender = determineUserGenderFromRole(role),
+                            phoneContact = rawInput,
+                            parentPhoneContact = rawInput,
+                            isApproved = false
+                        )
+                        updateDefaultSearchGender()
+                        onSuccess(false)
+                    }
+                }.onFailure { e ->
+                    onError("ઈમેલ/પાસવર્ડ ખોટો છે અથવા નોંધણી થઈ નથી.")
+                }
+                _isAuthenticating.value = false
             }
-            _isAuthenticating.value = false
         }
+    }
+
+    // Local storage helpers for draft profiles (stored on phone SharedPreferences only)
+    fun saveDraftLocally(draftProfile: Profile) {
+        _myProfile.value = draftProfile
+        try {
+            val json = org.json.JSONObject().apply {
+                put("id", draftProfile.id)
+                put("fullName", draftProfile.fullName)
+                put("fatherName", draftProfile.fatherName)
+                put("fatherOccupation", draftProfile.fatherOccupation)
+                put("motherName", draftProfile.motherName)
+                put("motherOccupation", draftProfile.motherOccupation)
+                put("grandfatherName", draftProfile.grandfatherName)
+                put("numBrothers", draftProfile.numBrothers)
+                put("brothersNames", draftProfile.brothersNames)
+                put("numSisters", draftProfile.numSisters)
+                put("sistersNames", draftProfile.sistersNames)
+                put("gender", draftProfile.gender)
+                put("age", draftProfile.age)
+                put("birthDate", draftProfile.birthDate)
+                put("birthTime", draftProfile.birthTime)
+                put("birthPlace", draftProfile.birthPlace)
+                put("height", draftProfile.height)
+                put("weight", draftProfile.weight)
+                put("bloodGroup", draftProfile.bloodGroup)
+                put("isNri", draftProfile.isNri)
+                put("nriCountry", draftProfile.nriCountry)
+                put("maritalStatus", draftProfile.maritalStatus)
+                put("hasMaritalHistory", draftProfile.hasMaritalHistory)
+                put("subCaste", draftProfile.subCaste)
+                put("gol", draftProfile.gol)
+                put("gotra", draftProfile.gotra)
+                put("motherGotra", draftProfile.motherGotra)
+                put("nativeVillage", draftProfile.nativeVillage)
+                put("motherBirthVillage", draftProfile.motherBirthVillage)
+                put("locality", draftProfile.locality)
+                put("education", draftProfile.education)
+                put("occupation", draftProfile.occupation)
+                put("currentCity", draftProfile.currentCity)
+                put("monthlyIncome", draftProfile.monthlyIncome)
+                put("phoneContact", draftProfile.phoneContact)
+                put("parentPhoneContact", draftProfile.parentPhoneContact)
+                put("hobbies", draftProfile.hobbies)
+                put("familyDetails", draftProfile.familyDetails)
+                put("aboutMe", draftProfile.aboutMe)
+                put("rashi", draftProfile.rashi)
+                put("manglikStatus", draftProfile.manglikStatus)
+                put("profileImageUrl", draftProfile.profileImageUrl)
+                put("aadharFrontUrl", draftProfile.aadharFrontUrl)
+                put("aadharBackUrl", draftProfile.aadharBackUrl)
+                put("aadharMasked", draftProfile.aadharMasked)
+                put("isAadharVerified", draftProfile.isAadharVerified)
+            }.toString()
+            prefs.edit().putString("local_draft_profile_json", json).apply()
+            Log.i("MatrimonyViewModel", "Draft profile saved locally in SharedPreferences")
+        } catch (e: Exception) {
+            Log.e("MatrimonyViewModel", "Error saving draft profile locally", e)
+        }
+    }
+
+    fun loadDraftLocally(): Profile? {
+        val jsonStr = prefs.getString("local_draft_profile_json", null) ?: return null
+        return try {
+            val json = org.json.JSONObject(jsonStr)
+            Profile(
+                id = json.optString("id", ""),
+                fullName = json.optString("fullName", ""),
+                fatherName = json.optString("fatherName", ""),
+                fatherOccupation = json.optString("fatherOccupation", ""),
+                motherName = json.optString("motherName", ""),
+                motherOccupation = json.optString("motherOccupation", ""),
+                grandfatherName = json.optString("grandfatherName", ""),
+                numBrothers = json.optInt("numBrothers", 0),
+                brothersNames = json.optString("brothersNames", ""),
+                numSisters = json.optInt("numSisters", 0),
+                sistersNames = json.optString("sistersNames", ""),
+                gender = json.optString("gender", ""),
+                age = json.optInt("age", 24),
+                birthDate = json.optString("birthDate", ""),
+                birthTime = json.optString("birthTime", ""),
+                birthPlace = json.optString("birthPlace", ""),
+                height = json.optString("height", ""),
+                weight = json.optString("weight", ""),
+                bloodGroup = json.optString("bloodGroup", ""),
+                isNri = json.optBoolean("isNri", false),
+                nriCountry = json.optString("nriCountry", ""),
+                maritalStatus = json.optString("maritalStatus", ""),
+                hasMaritalHistory = json.optBoolean("hasMaritalHistory", false),
+                subCaste = json.optString("subCaste", ""),
+                gol = json.optString("gol", ""),
+                gotra = json.optString("gotra", ""),
+                motherGotra = json.optString("motherGotra", ""),
+                nativeVillage = json.optString("nativeVillage", ""),
+                motherBirthVillage = json.optString("motherBirthVillage", ""),
+                locality = json.optString("locality", ""),
+                education = json.optString("education", ""),
+                occupation = json.optString("occupation", ""),
+                currentCity = json.optString("currentCity", ""),
+                monthlyIncome = json.optString("monthlyIncome", ""),
+                phoneContact = json.optString("phoneContact", ""),
+                parentPhoneContact = json.optString("parentPhoneContact", ""),
+                hobbies = json.optString("hobbies", ""),
+                familyDetails = json.optString("familyDetails", ""),
+                aboutMe = json.optString("aboutMe", ""),
+                rashi = json.optString("rashi", ""),
+                manglikStatus = json.optString("manglikStatus", ""),
+                profileImageUrl = json.optString("profileImageUrl", ""),
+                aadharFrontUrl = json.optString("aadharFrontUrl", ""),
+                aadharBackUrl = json.optString("aadharBackUrl", ""),
+                aadharMasked = json.optString("aadharMasked", ""),
+                isAadharVerified = json.optBoolean("isAadharVerified", false)
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun clearDraftLocally() {
+        prefs.edit().remove("local_draft_profile_json").apply()
     }
 
     fun registerWithEmailAndPassword(
@@ -672,55 +832,93 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             _isAuthenticating.value = true
             val rawInput = email.trim()
-            val isMobileNumber = rawInput.length == 10 && rawInput.all { it.isDigit() }
-            val authEmail = if (isMobileNumber) "$rawInput@chaudhari.com" else rawInput
 
-            val isTargetAdmin = rawInput.equals("srushtichaudhary11@gmail.com", ignoreCase = true)
-            val result = com.example.service.FirebaseAuthService.signUpWithEmail(authEmail, pass)
-            result.onSuccess { firebaseUser ->
-                val uid = firebaseUser.uid
-                val contactVal = if (isMobileNumber) rawInput else (firebaseUser.email ?: rawInput)
-                _isAdmin.value = isTargetAdmin
+            // Check if mobile number is already registered in Firestore
+            val isMobileNumber = rawInput.length == 10 && rawInput.all { it.isDigit() }
+            if (isMobileNumber) {
+                val isAlreadyRegistered = repository.isMobileNumberRegistered(rawInput)
+                if (isAlreadyRegistered) {
+                    _isAuthenticating.value = false
+                    onError("આ મોબાઈલ નંબર સાથે પહેલેથી જ પ્રોફાઇલ નોંધાયેલી છે! કૃપા કરીને લૉગિન કરો અથવા બીજો નંબર દાખલ કરો.")
+                    return@launch
+                }
+            }
+
+            val existingUser = com.example.service.FirebaseAuthService.currentUser
+            val isTargetAdmin = rawInput == "9724327777" || rawInput.equals("srushtichaudhary11@gmail.com", ignoreCase = true)
+            _isAdmin.value = isTargetAdmin
+
+            if (isMobileNumber) {
+                // Mobile Registration - Save profile by mobile number without synthetic email account in Firebase Auth
+                val uid = if (existingUser != null && !existingUser.isAnonymous && existingUser.phoneNumber?.contains(rawInput) == true) {
+                    existingUser.uid
+                } else {
+                    "USER_$rawInput"
+                }
 
                 val finalProfile = profileData.copy(
                     id = uid,
-                    phoneContact = contactVal,
-                    parentPhoneContact = profileData.parentPhoneContact.ifBlank { contactVal },
+                    phoneContact = rawInput,
+                    parentPhoneContact = profileData.parentPhoneContact.ifBlank { rawInput },
                     isApproved = if (isTargetAdmin) true else false,
                     isRejected = false,
                     rejectionReason = ""
                 )
                 repository.saveProfile(finalProfile)
                 _myProfile.value = finalProfile
+                clearDraftLocally()
                 updateDefaultSearchGender()
                 _isLoggedIn.value = true
                 _isAuthenticating.value = false
                 onSuccess()
-            }.onFailure { e ->
-                // If account creation failed on Auth server, save profile with generated ID
-                val fallbackUid = "usr_${System.currentTimeMillis()}_$rawInput"
-                val contactVal = rawInput
-                val finalProfile = profileData.copy(
-                    id = fallbackUid,
-                    phoneContact = contactVal,
-                    parentPhoneContact = profileData.parentPhoneContact.ifBlank { contactVal },
-                    isApproved = if (isTargetAdmin) true else false,
-                    isRejected = false,
-                    rejectionReason = ""
-                )
-                repository.saveProfile(finalProfile)
-                _myProfile.value = finalProfile
-                updateDefaultSearchGender()
-                _isLoggedIn.value = true
-                _isAuthenticating.value = false
-                onSuccess()
+            } else {
+                // Real Email Registration
+                val result = com.example.service.FirebaseAuthService.signUpWithEmail(rawInput, pass)
+                result.onSuccess { firebaseUser ->
+                    val uid = firebaseUser.uid
+                    val contactVal = firebaseUser.email ?: rawInput
+                    val finalProfile = profileData.copy(
+                        id = uid,
+                        phoneContact = contactVal,
+                        parentPhoneContact = profileData.parentPhoneContact.ifBlank { contactVal },
+                        isApproved = if (isTargetAdmin) true else false,
+                        isRejected = false,
+                        rejectionReason = ""
+                    )
+                    repository.saveProfile(finalProfile)
+                    _myProfile.value = finalProfile
+                    clearDraftLocally()
+                    updateDefaultSearchGender()
+                    _isLoggedIn.value = true
+                    _isAuthenticating.value = false
+                    onSuccess()
+                }.onFailure { e ->
+                    // Fallback saving if network fails
+                    val fallbackUid = "usr_${System.currentTimeMillis()}_$rawInput"
+                    val finalProfile = profileData.copy(
+                        id = fallbackUid,
+                        phoneContact = rawInput,
+                        parentPhoneContact = profileData.parentPhoneContact.ifBlank { rawInput },
+                        isApproved = if (isTargetAdmin) true else false,
+                        isRejected = false,
+                        rejectionReason = ""
+                    )
+                    repository.saveProfile(finalProfile)
+                    _myProfile.value = finalProfile
+                    clearDraftLocally()
+                    updateDefaultSearchGender()
+                    _isLoggedIn.value = true
+                    _isAuthenticating.value = false
+                    onSuccess()
+                }
             }
         }
     }
 
     fun onPhoneAuthSuccess(phoneNumber: String, role: String, onSuccess: (isNewUser: Boolean) -> Unit) {
         viewModelScope.launch {
-            val uid = com.example.service.FirebaseAuthService.currentUser?.uid ?: "USER_$phoneNumber"
+            val currentUser = com.example.service.FirebaseAuthService.currentUser
+            val uid = currentUser?.uid ?: "USER_$phoneNumber"
             val (isRegistered, registeredProfile) = checkIsUserRegistered(uid, phoneNumber)
             loginUser(role)
             if (isRegistered && registeredProfile != null) {
@@ -728,22 +926,43 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
                 updateDefaultSearchGender()
                 onSuccess(false)
             } else {
-                _myProfile.value = Profile(
+                val localDraft = loadDraftLocally()
+                val draftOrNew = (localDraft ?: Profile(id = uid)).copy(
                     id = uid,
-                    fullName = "",
+                    fullName = localDraft?.fullName ?: "",
                     gender = determineUserGenderFromRole(role),
                     phoneContact = phoneNumber,
                     isApproved = false
                 )
+                _myProfile.value = draftOrNew
                 updateDefaultSearchGender()
                 onSuccess(true)
             }
         }
     }
 
-    fun uploadProfileImage(uri: android.net.Uri, onResult: (String?) -> Unit) {
+    fun uploadProfileImage(
+        uri: android.net.Uri,
+        onProgress: (Int) -> Unit = {},
+        onResult: (String?) -> Unit
+    ) {
         viewModelScope.launch {
-            val url = com.example.service.FirebaseStorageService.uploadProfileImage(_myProfile.value.id, uri)
+            val context = getApplication<Application>()
+            val effectiveId = if (_myProfile.value.id.isNotBlank() && _myProfile.value.id != "USER_ME") {
+                _myProfile.value.id
+            } else {
+                val currentAuthUid = com.example.service.FirebaseAuthService.currentUser?.uid
+                if (!currentAuthUid.isNullOrBlank()) currentAuthUid else "usr_${System.currentTimeMillis()}"
+            }
+            if (_myProfile.value.id == "USER_ME" || _myProfile.value.id.isBlank()) {
+                _myProfile.value = _myProfile.value.copy(id = effectiveId)
+            }
+            val url = com.example.service.FirebaseStorageService.uploadProfileImageWithProgress(
+                context = context,
+                profileId = effectiveId,
+                imageUri = uri,
+                onProgress = onProgress
+            )
             if (url != null) {
                 _myProfile.value = _myProfile.value.copy(profileImageUrl = url)
                 repository.saveProfile(_myProfile.value)
@@ -752,9 +971,29 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun uploadAadharFrontImage(uri: android.net.Uri, onResult: (String?) -> Unit) {
+    fun uploadAadharFrontImage(
+        uri: android.net.Uri,
+        onProgress: (Int) -> Unit = {},
+        onResult: (String?) -> Unit
+    ) {
         viewModelScope.launch {
-            val url = com.example.service.FirebaseStorageService.uploadAadharImage(_myProfile.value.id, "front", uri)
+            val context = getApplication<Application>()
+            val effectiveId = if (_myProfile.value.id.isNotBlank() && _myProfile.value.id != "USER_ME") {
+                _myProfile.value.id
+            } else {
+                val currentAuthUid = com.example.service.FirebaseAuthService.currentUser?.uid
+                if (!currentAuthUid.isNullOrBlank()) currentAuthUid else "usr_${System.currentTimeMillis()}"
+            }
+            if (_myProfile.value.id == "USER_ME" || _myProfile.value.id.isBlank()) {
+                _myProfile.value = _myProfile.value.copy(id = effectiveId)
+            }
+            val url = com.example.service.FirebaseStorageService.uploadAadharImageWithProgress(
+                context = context,
+                profileId = effectiveId,
+                side = "front",
+                imageUri = uri,
+                onProgress = onProgress
+            )
             if (url != null) {
                 _myProfile.value = _myProfile.value.copy(aadharFrontUrl = url)
                 repository.saveProfile(_myProfile.value)
@@ -763,15 +1002,43 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun uploadAadharBackImage(uri: android.net.Uri, onResult: (String?) -> Unit) {
+    fun uploadAadharBackImage(
+        uri: android.net.Uri,
+        onProgress: (Int) -> Unit = {},
+        onResult: (String?) -> Unit
+    ) {
         viewModelScope.launch {
-            val url = com.example.service.FirebaseStorageService.uploadAadharImage(_myProfile.value.id, "back", uri)
+            val context = getApplication<Application>()
+            val effectiveId = if (_myProfile.value.id.isNotBlank() && _myProfile.value.id != "USER_ME") {
+                _myProfile.value.id
+            } else {
+                val currentAuthUid = com.example.service.FirebaseAuthService.currentUser?.uid
+                if (!currentAuthUid.isNullOrBlank()) currentAuthUid else "usr_${System.currentTimeMillis()}"
+            }
+            if (_myProfile.value.id == "USER_ME" || _myProfile.value.id.isBlank()) {
+                _myProfile.value = _myProfile.value.copy(id = effectiveId)
+            }
+            val url = com.example.service.FirebaseStorageService.uploadAadharImageWithProgress(
+                context = context,
+                profileId = effectiveId,
+                side = "back",
+                imageUri = uri,
+                onProgress = onProgress
+            )
             if (url != null) {
                 _myProfile.value = _myProfile.value.copy(aadharBackUrl = url)
                 repository.saveProfile(_myProfile.value)
             }
             onResult(url)
         }
+    }
+
+    suspend fun isMobileRegistered(phone: String, excludeUid: String): Boolean {
+        return repository.isMobileRegisteredInFirestore(phone, excludeUid)
+    }
+
+    suspend fun isAadharRegistered(aadhar: String, excludeUid: String): Boolean {
+        return repository.isAadharRegisteredInFirestore(aadhar, excludeUid)
     }
 
     fun setGenderFilter(gender: String) {
@@ -810,17 +1077,164 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun updateMyProfile(updatedProfile: Profile, onResult: ((Result<Unit>) -> Unit)? = null) {
         viewModelScope.launch {
+            val authUid = com.example.service.FirebaseAuthService.currentUser?.uid
             val assignedId = if (updatedProfile.id.isBlank() || updatedProfile.id == "USER_ME") {
-                com.example.service.FirebaseAuthService.currentUser?.uid ?: ("user_" + System.currentTimeMillis())
+                authUid ?: ("user_" + System.currentTimeMillis())
             } else {
                 updatedProfile.id
             }
             val finalProfile = updatedProfile.copy(id = assignedId)
             _myProfile.value = finalProfile
             updateDefaultSearchGender()
-            val res = repository.saveProfile(finalProfile)
-            repository.syncFirestoreProfiles()
-            onResult?.invoke(res)
+
+            if (finalProfile.fullName.trim().isNotBlank()) {
+                val res = repository.saveProfile(finalProfile)
+                clearDraftLocally()
+                repository.syncFirestoreProfiles()
+                onResult?.invoke(res)
+            } else {
+                saveDraftLocally(finalProfile)
+                onResult?.invoke(Result.success(Unit))
+            }
+        }
+    }
+
+    fun checkSubscriptionExpiryStatus() {
+        val current = _myProfile.value
+        if (current.isVipSubscribed) {
+            val now = System.currentTimeMillis()
+            var isExpired = false
+
+            if (current.subscriptionExpiryTimestamp > 0L) {
+                if (now > current.subscriptionExpiryTimestamp) {
+                    isExpired = true
+                }
+            } else if (current.subscriptionExpiryDate.isNotBlank()) {
+                try {
+                    val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                    val expiryDate = sdf.parse(current.subscriptionExpiryDate)
+                    if (expiryDate != null && now > (expiryDate.time + 24 * 60 * 60 * 1000L)) {
+                        isExpired = true
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("MatrimonyViewModel", "Error parsing subscriptionExpiryDate: ${current.subscriptionExpiryDate}", e)
+                }
+            }
+
+            if (isExpired) {
+                val expiredProfile = current.copy(isVipSubscribed = false)
+                _myProfile.value = expiredProfile
+                viewModelScope.launch {
+                    repository.saveProfile(expiredProfile)
+                    val notif = AppNotification(
+                        id = "notif_exp_" + System.currentTimeMillis(),
+                        userId = current.id,
+                        title = "VIP Membership Expired ⚠️",
+                        message = "Your 3-Month VIP Membership expired on ${current.subscriptionExpiryDate}. Please renew for ₹590 (₹500 + 18% GST) to continue enjoying unlimited contacts and verified bio-data access.",
+                        timestamp = System.currentTimeMillis(),
+                        type = "SUBSCRIPTION_EXPIRED"
+                    )
+                    repository.saveNotificationToFirestore(notif)
+                    com.example.service.NotificationHelper.showSystemPushNotification(
+                        getApplication(),
+                        "VIP Membership Expired ⚠️",
+                        "Renew now for ₹590 (500 + 18% GST) to keep VIP access."
+                    )
+                }
+            }
+        }
+    }
+
+    fun subscribeVipPlan(planName: String, paymentId: String, orderId: String) {
+        val current = _myProfile.value
+        val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+        val nowMs = System.currentTimeMillis()
+        val startDateStr = sdf.format(java.util.Date(nowMs))
+        val expiryMs = nowMs + (90L * 24 * 60 * 60 * 1000) // 90 days validity
+        val expiryDateStr = sdf.format(java.util.Date(expiryMs))
+
+        val updated = current.copy(
+            isVipSubscribed = true,
+            subscriptionPlan = planName,
+            subscriptionTxnId = paymentId,
+            subscriptionStartDate = startDateStr,
+            subscriptionStartTimestamp = nowMs,
+            subscriptionExpiryDate = expiryDateStr,
+            subscriptionExpiryTimestamp = expiryMs,
+            isFreeSchemeUsed = false
+        )
+        updateMyProfile(updated)
+        viewModelScope.launch {
+            val notif = AppNotification(
+                id = "notif_" + System.currentTimeMillis(),
+                userId = updated.id,
+                title = "VIP Membership Activated! 🎉",
+                message = "Your $planName payment (Razorpay ID: $paymentId) was successful. Valid until $expiryDateStr.",
+                timestamp = System.currentTimeMillis(),
+                type = "VIP_SUBSCRIPTION"
+            )
+            repository.saveNotificationToFirestore(notif)
+            com.example.service.NotificationHelper.showSystemPushNotification(
+                getApplication(),
+                "VIP Membership Activated! 🎉",
+                "Your plan is active until $expiryDateStr. Txn: $paymentId"
+            )
+        }
+    }
+
+    fun claimFreeVipScheme(onResult: (Boolean, String) -> Unit) {
+        val current = _myProfile.value
+        if (current.isFreeSchemeUsed || current.isVipSubscribed) {
+            onResult(false, "You already have an active VIP subscription or free scheme claimed.")
+            return
+        }
+        val currentClaimed = freeSchemeClaimedCount.value
+        if (currentClaimed >= 100) {
+            onResult(false, "Sorry, all 100 free VIP subscriptions have been claimed!")
+            return
+        }
+
+        val sdf = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+        val nowMs = System.currentTimeMillis()
+        val startDateStr = sdf.format(java.util.Date(nowMs))
+        val expiryMs = nowMs + (90L * 24 * 60 * 60 * 1000) // 90 days free validity
+        val expiryDateStr = sdf.format(java.util.Date(expiryMs))
+
+        val updated = current.copy(
+            isVipSubscribed = true,
+            subscriptionPlan = "First 100 Users Free VIP Scheme (3 Months)",
+            subscriptionTxnId = "FREE_EARLY_BIRD_SCHEME",
+            subscriptionStartDate = startDateStr,
+            subscriptionStartTimestamp = nowMs,
+            subscriptionExpiryDate = expiryDateStr,
+            subscriptionExpiryTimestamp = expiryMs,
+            isFreeSchemeUsed = true
+        )
+        updateMyProfile(updated) { result ->
+            if (result.isSuccess) {
+                viewModelScope.launch {
+                    // Record in Firestore free_subscribers and increment app_stats counter
+                    repository.recordFreeSubscriptionInFirestore(updated)
+
+                    val notif = AppNotification(
+                        id = "notif_free_" + System.currentTimeMillis(),
+                        userId = updated.id,
+                        title = "Free 3-Month VIP Activated! 🎁",
+                        message = "Congratulations! You claimed the Early Bird Free 3-Month VIP Subscription. Valid until $expiryDateStr.",
+                        timestamp = System.currentTimeMillis(),
+                        type = "VIP_FREE_SCHEME"
+                    )
+                    repository.saveNotificationToFirestore(notif)
+                    com.example.service.NotificationHelper.showSystemPushNotification(
+                        getApplication(),
+                        "Free 3-Month VIP Activated! 🎁",
+                        "Early bird offer claimed! Active until $expiryDateStr."
+                    )
+                }
+                onResult(true, "Free 3-Month VIP Membership activated successfully!")
+            } else {
+                onResult(false, "Failed to activate offer. Please try again.")
+            }
         }
     }
 
@@ -833,68 +1247,42 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun selectPartnerForKundli(partner: Profile) {
-        _selectedKundliPartner.value = partner
-        _kundliResult.value = null
-        calculateKundliMatch(partner)
-    }
-
-    fun calculateKundliMatch(partner: Profile) {
-        viewModelScope.launch {
-            _isCalculatingKundli.value = true
-            val result = repository.analyzeKundli(_myProfile.value, partner)
-            _kundliResult.value = result
-            _isCalculatingKundli.value = false
-        }
-    }
-
-    fun generateTopAIPicks() {
-        viewModelScope.launch {
-            _isGeneratingTopPicks.value = true
-            val candidates = filteredProfiles.value.take(5)
-            val reasons = mutableMapOf<String, String>()
-            for (candidate in candidates) {
-                val reason = repository.getTopMatchReasons(_myProfile.value, candidate)
-                reasons[candidate.id] = reason
-            }
-            _topPickReasons.value = reasons
-            _isGeneratingTopPicks.value = false
-        }
-    }
-
     // Admin Pending Profiles Stream
     val pendingProfiles: StateFlow<List<Profile>> = allProfiles.map { list ->
         list.filter { !it.isApproved && !it.isRejected && it.fullName.isNotBlank() }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun approveProfile(profileId: String) {
+    fun approveProfile(profileId: String, onComplete: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
-            repository.approveProfile(profileId)
+            val res = repository.approveProfile(profileId)
             if (_myProfile.value.id == profileId) {
                 _myProfile.value = _myProfile.value.copy(isApproved = true, isRejected = false, rejectionReason = "")
             }
             repository.syncFirestoreProfiles()
+            onComplete?.invoke(res.isSuccess)
         }
     }
 
-    fun rejectProfile(profileId: String, reason: String) {
+    fun rejectProfile(profileId: String, reason: String, onComplete: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
-            repository.rejectProfile(profileId, reason)
+            val res = repository.rejectProfile(profileId, reason)
             if (_myProfile.value.id == profileId) {
                 _myProfile.value = _myProfile.value.copy(isApproved = false, isRejected = true, rejectionReason = reason)
             }
             repository.syncFirestoreProfiles()
+            onComplete?.invoke(res.isSuccess)
         }
     }
 
-    fun deleteProfile(profileId: String) {
+    fun deleteProfile(profileId: String, onComplete: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
-            repository.deleteProfile(profileId)
+            val res = repository.deleteProfile(profileId)
             repository.syncFirestoreProfiles()
+            onComplete?.invoke(res.isSuccess)
         }
     }
 
-    fun sendChatMessage(profileId: String, text: String, isVoice: Boolean = false) {
+    fun sendChatMessage(profileId: String, text: String, isVoice: Boolean = false, audioUrl: String = "") {
         viewModelScope.launch {
             val authUid = com.example.service.FirebaseAuthService.currentUser?.uid
             val pid = _myProfile.value.id
@@ -915,7 +1303,8 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
                 timestamp = formattedTime,
                 timestampMs = System.currentTimeMillis(),
                 isVoiceNote = isVoice,
-                voiceDurationSec = if (isVoice) 6 else 0
+                voiceDurationSec = if (isVoice) 6 else 0,
+                audioUrl = audioUrl
             )
             repository.sendChatMessage(msg)
         }
@@ -971,17 +1360,24 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
 
                     override fun onVerificationFailed(e: com.google.firebase.FirebaseException) {
                         Log.e("MatrimonyViewModel", "Firebase Phone Auth Verification Failed: ${e.message}", e)
-                        val errorMsg = when {
-                            e.message?.contains("app identifier", ignoreCase = true) == true ||
-                            e.message?.contains("Play Integrity", ignoreCase = true) == true ||
-                            e.message?.contains("reCAPTCHA", ignoreCase = true) == true ||
-                            e.message?.contains("app-not-authorized", ignoreCase = true) == true ->
-                                "Firebase Play Integrity / SHA ફિંગરપ્રિન્ટ જરૂરી છે. નીચે 'SHA સેટઅપ ગાઇડ' જુઓ અથવા ટેસ્ટિંગ નંબર વાપરો."
-                            e.message?.contains("quota", ignoreCase = true) == true -> "SMS ક્વોટા મર્યાદા સમાપ્ત થઈ ગઈ છે. કૃપા કરીને થોડી વાર પછી પ્રયાસ કરો."
-                            e.message?.contains("invalid", ignoreCase = true) == true -> "અમાન્ય ફોન નંબર. કૃપા કરીને ૧૦ અંકનો સાચો નંબર ચકાસો."
-                            else -> "SMS OTP મોકલવામાં નિષ્ફળતા: ${e.localizedMessage ?: e.message}"
+                        val isAuthOrShaError = e.message?.contains("app identifier", ignoreCase = true) == true ||
+                                e.message?.contains("Play Integrity", ignoreCase = true) == true ||
+                                e.message?.contains("play_integrity", ignoreCase = true) == true ||
+                                e.message?.contains("reCAPTCHA", ignoreCase = true) == true ||
+                                e.message?.contains("not authorized", ignoreCase = true) == true ||
+                                e.message?.contains("SHA", ignoreCase = true) == true ||
+                                e.message?.contains("registered in the Firebase console", ignoreCase = true) == true ||
+                                e.message?.contains("app-not-authorized", ignoreCase = true) == true
+
+                        if (isAuthOrShaError) {
+                            onError("Firebase Phone Auth એરર: Google Play Console ના 'App Signing Key' નું SHA-256 ફિંગરપ્રિન્ટ Firebase Console માં ઉમેરવું જરૂરી છે.\n(${e.localizedMessage ?: e.message})")
+                        } else if (e.message?.contains("quota", ignoreCase = true) == true) {
+                            onError("SMS ક્વોટા મર્યાદા સમાપ્ત થઈ ગઈ છે. કૃપા કરીને થોડી વાર પછી પ્રયાસ કરો.")
+                        } else if (e.message?.contains("invalid", ignoreCase = true) == true) {
+                            onError("અમાન્ય ફોન નંબર. કૃપા કરીને ૧૦ અંકનો સાચો નંબર ચકાસો.")
+                        } else {
+                            onError("SMS OTP મોકલવામાં નિષ્ફળતા: ${e.localizedMessage ?: e.message}")
                         }
-                        onError(errorMsg)
                     }
 
                     override fun onCodeSent(
@@ -1011,18 +1407,14 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
                 return@launch
             }
 
-            if (verificationId.startsWith("TEST_MODE_")) {
-                val expected = verificationId.removePrefix("TEST_MODE_")
-                if (code == expected || code == "123456") {
-                    onSuccess()
-                } else {
-                    onError("અમાન્ય OTP કોડ. ટેસ્ટ કોડ $expected દાખલ કરો.")
-                }
-                return@launch
-            }
-
             val result = com.example.service.FirebaseAuthService.verifyOtpAndSignIn(verificationId, code)
             if (result.isSuccess) {
+                val currentUser = com.example.service.FirebaseAuthService.currentUser
+                if (currentUser != null) {
+                    attachRealtimeSync()
+                    repository.forceServerSyncOnLogin(currentUser.uid)
+                    com.example.service.FcmTokenManager.registerAndSyncFcmToken(currentUser.uid)
+                }
                 onSuccess()
             } else {
                 val ex = result.exceptionOrNull()
@@ -1044,7 +1436,6 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             _isAuthenticating.value = true
             val cleanMobile = mobileNumber.trim()
-            val formattedEmail = if (cleanMobile.length == 10 && cleanMobile.all { it.isDigit() }) "$cleanMobile@chaudhari.com" else cleanMobile
             val res = repository.resetPasswordForMobile(cleanMobile, newPass)
             _isAuthenticating.value = false
             if (res) {
@@ -1112,14 +1503,16 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun isInterestAccepted(profileId: String): Boolean {
         if (_isAdmin.value) return true
-        val authUid = com.example.service.FirebaseAuthService.currentUser?.uid
-        val pid = _myProfile.value.id
-        val myId = if (pid.isNotBlank() && pid != "USER_ME") pid else (authUid ?: "USER_ME")
-        if (profileId == myId) return true
+        val myIds = repository.getMyUserIds(_myProfile.value.id)
+        val targetIds = repository.getMyUserIds(profileId)
+        if (targetIds.any { myIds.contains(it) }) return true
         val interests = userInterests.value
-        val match = interests.find {
-            ((it.senderId == myId && it.receiverId == profileId) || (it.senderId == profileId && it.receiverId == myId)) &&
-                    it.status == "ACCEPTED"
+        val match = interests.find { req ->
+            val matchesMySender = myIds.contains(req.senderId) || (req.senderPhone.isNotBlank() && myIds.contains(req.senderPhone))
+            val matchesTargetReceiver = targetIds.contains(req.receiverId) || (req.receiverPhone.isNotBlank() && targetIds.contains(req.receiverPhone))
+            val matchesTargetSender = targetIds.contains(req.senderId) || (req.senderPhone.isNotBlank() && targetIds.contains(req.senderPhone))
+            val matchesMyReceiver = myIds.contains(req.receiverId) || (req.receiverPhone.isNotBlank() && myIds.contains(req.receiverPhone))
+            ((matchesMySender && matchesTargetReceiver) || (matchesTargetSender && matchesMyReceiver)) && req.status == "ACCEPTED"
         }
         return match != null
     }
@@ -1131,6 +1524,7 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
         onError: (String) -> Unit
     ) {
         viewModelScope.launch {
+            _isDeletingAccount.value = true
             _isAuthenticating.value = true
             try {
                 val pid = _myProfile.value.id
@@ -1141,18 +1535,29 @@ class MatrimonyViewModel(application: Application) : AndroidViewModel(applicatio
                     repository.deleteProfile(effectiveId)
                 }
 
+                clearDraftLocally()
+                prefs.edit().clear().apply()
+
                 val currentUser = com.example.service.FirebaseAuthService.currentUser
-                currentUser?.delete()
+                try {
+                    currentUser?.delete()
+                } catch (e: Exception) {
+                    Log.w("MatrimonyViewModel", "Auth user delete attempt: ${e.message}")
+                }
                 com.example.service.FirebaseAuthService.signOut()
 
                 _isLoggedIn.value = false
                 _myProfile.value = Profile(id = "")
                 _isAuthenticating.value = false
+                _isDeletingAccount.value = false
 
                 repository.syncFirestoreProfiles()
                 onSuccess()
             } catch (e: Exception) {
                 _isAuthenticating.value = false
+                _isDeletingAccount.value = false
+                clearDraftLocally()
+                prefs.edit().clear().apply()
                 com.example.service.FirebaseAuthService.signOut()
                 _isLoggedIn.value = false
                 _myProfile.value = Profile(id = "")

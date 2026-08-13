@@ -18,7 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,7 +39,8 @@ import com.example.ui.viewmodel.MatrimonyViewModel
 @Composable
 fun ProfileSetupScreen(
     viewModel: MatrimonyViewModel,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onLogoutClick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val myProfile by viewModel.myProfile.collectAsState()
@@ -55,29 +56,8 @@ fun ProfileSetupScreen(
     // Bio-data Lock & Edit Mode
     var isEditing by remember { mutableStateOf(!myProfile.fullName.isNotBlank()) }
 
-    if (!isEditing && myProfile.fullName.isNotBlank()) {
-        LockedBioDataView(
-            profile = myProfile,
-            onEditClick = { isEditing = true },
-            onBackClick = onBackClick,
-            onLogoutClick = {
-                if (myProfile.fullName.isNotBlank()) {
-                    onBackClick()
-                } else {
-                    isEditing = true
-                    currentStep = 1
-                }
-            },
-            onRefreshClick = {
-                viewModel.refreshDashboard()
-                Toast.makeText(context, "મંજૂરી સ્થિતિ તાજી કરી રહ્યા છીએ... (Refreshing Status)", Toast.LENGTH_SHORT).show()
-            }
-        )
-        return
-    }
-
     // Step 1: Registration Credentials, Personal Details & Birth Details for Kundli
-    var regEmail by remember { mutableStateOf(if (myProfile.phoneContact.contains("@")) myProfile.phoneContact else "") }
+    var regEmail by remember { mutableStateOf(myProfile.phoneContact.ifBlank { myProfile.parentPhoneContact }) }
     var regPassword by remember { mutableStateOf("") }
     var regPasswordVisible by remember { mutableStateOf(false) }
 
@@ -101,10 +81,14 @@ fun ProfileSetupScreen(
     var birthPlace by remember { mutableStateOf(if (myProfile.birthPlace.isNotBlank()) myProfile.birthPlace else "Palanpur, Banaskantha, Gujarat") }
     var height by remember { mutableStateOf(myProfile.height) }
     var currentCity by remember { mutableStateOf(myProfile.currentCity) }
+    var aadharNumber by remember { mutableStateOf(myProfile.aadharNumber) }
     var phoneContact by remember { mutableStateOf(myProfile.phoneContact) }
     var parentPhoneContact by remember { mutableStateOf(myProfile.parentPhoneContact) }
+    var isMobileDuplicate by remember { mutableStateOf(false) }
+    var isAadharDuplicate by remember { mutableStateOf(false) }
     var bloodGroup by remember { mutableStateOf(if (myProfile.bloodGroup.isNotBlank()) myProfile.bloodGroup else "A+") }
     var isNri by remember { mutableStateOf(myProfile.isNri) }
+    var nriCountry by remember { mutableStateOf(if (myProfile.nriCountry.isNotBlank()) myProfile.nriCountry else "United States (USA)") }
     var maritalStatus by remember { mutableStateOf(if (myProfile.maritalStatus.isNotBlank()) myProfile.maritalStatus else "Unmarried") }
     var maritalStatusOther by remember { mutableStateOf("") }
 
@@ -123,14 +107,25 @@ fun ProfileSetupScreen(
     var monthlyIncome by remember { mutableStateOf(myProfile.monthlyIncome) }
     var hobbies by remember { mutableStateOf(myProfile.hobbies) }
 
-    // Step 4: Family & Bio / Horoscope
+    // Step 4: Family & Bio / Horoscope & Partner Preferences
     var familyDetails by remember { mutableStateOf(myProfile.familyDetails) }
     var aboutMe by remember { mutableStateOf(myProfile.aboutMe) }
     var voiceNotesInput by remember { mutableStateOf("") }
+
+    // Expected Matrimonial Partner Preferences (ઈચ્છિત પાત્ર અપેક્ષા)
+    var prefAgeMin by remember { mutableStateOf(if (myProfile.prefAgeMin > 0) myProfile.prefAgeMin.toString() else "21") }
+    var prefAgeMax by remember { mutableStateOf(if (myProfile.prefAgeMax > 0) myProfile.prefAgeMax.toString() else "32") }
+    var prefHeightMin by remember { mutableStateOf(if (myProfile.prefHeightMin.isNotBlank()) myProfile.prefHeightMin else "5'2\"") }
+    var prefHeightMax by remember { mutableStateOf(if (myProfile.prefHeightMax.isNotBlank()) myProfile.prefHeightMax else "6'2\"") }
+    var prefMinIncome by remember { mutableStateOf(if (myProfile.prefMinIncome.isNotBlank()) myProfile.prefMinIncome else "₹25,000+ / મહિનો") }
+    var prefEducation by remember { mutableStateOf(if (myProfile.prefEducation.isNotBlank()) myProfile.prefEducation else "કોઈપણ / સ્નાતક (Graduate)") }
+    var prefOccupation by remember { mutableStateOf(if (myProfile.prefOccupation.isNotBlank()) myProfile.prefOccupation else "નોકરી / વ્યવસાય (Job/Business)") }
+    var prefCity by remember { mutableStateOf(if (myProfile.prefCity.isNotBlank()) myProfile.prefCity else "ગુજરાત / કોઈપણ શહેર") }
     var rashi by remember { mutableStateOf(if (myProfile.rashi.isNotBlank()) myProfile.rashi else "Mesha") }
     var manglikStatus by remember { mutableStateOf(if (myProfile.manglikStatus.isNotBlank()) myProfile.manglikStatus else "Non-Manglik") }
 
     var isSaving by remember { mutableStateOf(false) }
+    var showExitConfirmDialog by remember { mutableStateOf(false) }
 
     var agreeTerms by remember { mutableStateOf(false) }
     var agreePrivacy by remember { mutableStateOf(false) }
@@ -142,6 +137,163 @@ fun ProfileSetupScreen(
     var showStep2Errors by remember { mutableStateOf(false) }
     var showStep3Errors by remember { mutableStateOf(false) }
     var showStep4Errors by remember { mutableStateOf(false) }
+
+    // Upload & Progress States for Step 1
+    var isUploadingProfile by remember { mutableStateOf(false) }
+    var profileUploadProgress by remember { mutableIntStateOf(0) }
+    var isUploadingFront by remember { mutableStateOf(false) }
+    var frontUploadProgress by remember { mutableIntStateOf(0) }
+    var isUploadingBack by remember { mutableStateOf(false) }
+    var backUploadProgress by remember { mutableIntStateOf(0) }
+
+    val startUploadProfile: (Uri) -> Unit = { uri ->
+        isUploadingProfile = true
+        profileUploadProgress = 0
+        viewModel.uploadProfileImage(
+            uri = uri,
+            onProgress = { pct -> profileUploadProgress = pct },
+            onResult = { uploadedUrl ->
+                isUploadingProfile = false
+                if (uploadedUrl != null) {
+                    profileUploadProgress = 100
+                    Toast.makeText(context, "પ્રોફાઇલ તસવીર ૧૦૦% સફળતાપૂર્વક અપલોડ થઈ ગઈ!", Toast.LENGTH_SHORT).show()
+                } else {
+                    profileUploadProgress = 0
+                    Toast.makeText(context, "તસવીર અપલોડ નિષ્ફળ! કૃપા કરીને ફરી પ્રયાસ કરો.", Toast.LENGTH_LONG).show()
+                }
+            }
+        )
+    }
+
+    val startUploadFront: (Uri) -> Unit = { uri ->
+        isUploadingFront = true
+        frontUploadProgress = 0
+        viewModel.uploadAadharFrontImage(
+            uri = uri,
+            onProgress = { pct -> frontUploadProgress = pct },
+            onResult = { uploadedUrl ->
+                isUploadingFront = false
+                if (uploadedUrl != null) {
+                    frontUploadProgress = 100
+                    Toast.makeText(context, "આધાર ફ્રન્ટ ફોટો ૧૦૦% સફળતાપૂર્વક અપલોડ થયો!", Toast.LENGTH_SHORT).show()
+                } else {
+                    frontUploadProgress = 0
+                    Toast.makeText(context, "આધાર ફ્રન્ટ અપલોડ નિષ્ફળ! ફરી પ્રયાસ કરો.", Toast.LENGTH_LONG).show()
+                }
+            }
+        )
+    }
+
+    val startUploadBack: (Uri) -> Unit = { uri ->
+        isUploadingBack = true
+        backUploadProgress = 0
+        viewModel.uploadAadharBackImage(
+            uri = uri,
+            onProgress = { pct -> backUploadProgress = pct },
+            onResult = { uploadedUrl ->
+                isUploadingBack = false
+                if (uploadedUrl != null) {
+                    backUploadProgress = 100
+                    Toast.makeText(context, "આધાર બેક ફોટો ૧૦૦% સફળતાપૂર્વક અપલોડ થયો!", Toast.LENGTH_SHORT).show()
+                } else {
+                    backUploadProgress = 0
+                    Toast.makeText(context, "આધાર બેક અપલોડ નિષ્ફળ! ફરી પ્રયાસ કરો.", Toast.LENGTH_LONG).show()
+                }
+            }
+        )
+    }
+
+    // Profile Edit Mode OTP Verification States
+    var editOtpSent by remember { mutableStateOf(false) }
+    var editVerificationId by remember { mutableStateOf("") }
+    var editResendToken by remember { mutableStateOf<com.google.firebase.auth.PhoneAuthProvider.ForceResendingToken?>(null) }
+    var editEnteredOtp by remember { mutableStateOf("") }
+    var isEditOtpVerified by remember { mutableStateOf(false) }
+    var isSendingEditOtp by remember { mutableStateOf(false) }
+    var isVerifyingEditOtp by remember { mutableStateOf(false) }
+    var editTimerSeconds by remember { mutableIntStateOf(60) }
+    var editOtpError by remember { mutableStateOf("") }
+
+    LaunchedEffect(editOtpSent, editTimerSeconds) {
+        if (editOtpSent && !isEditOtpVerified && editTimerSeconds > 0) {
+            kotlinx.coroutines.delay(1000L)
+            editTimerSeconds -= 1
+        }
+    }
+
+    // Draft save & sign-out helper
+    val performLogout = {
+        if (fullName.isNotBlank() || fatherName.isNotBlank() || parentPhoneContact.isNotBlank() || regEmail.isNotBlank()) {
+            val finalMaritalStatus = if (maritalStatus == "Other") {
+                if (maritalStatusOther.isNotBlank()) "Other: $maritalStatusOther" else "Other"
+            } else {
+                maritalStatus
+            }
+            val draftProfile = myProfile.copy(
+                fullName = fullName,
+                fatherName = fatherName,
+                fatherOccupation = fatherOccupation,
+                grandfatherName = grandfatherName,
+                motherName = motherName,
+                motherOccupation = motherOccupation,
+                numBrothers = numBrothers,
+                brothersNames = brothersNames,
+                numSisters = numSisters,
+                sistersNames = sistersNames,
+                gender = gender,
+                age = age.toIntOrNull() ?: myProfile.age,
+                birthDate = birthDate,
+                birthTime = birthTime,
+                birthPlace = birthPlace,
+                height = height,
+                currentCity = currentCity,
+                phoneContact = regEmail.ifBlank { parentPhoneContact },
+                parentPhoneContact = parentPhoneContact,
+                bloodGroup = bloodGroup,
+                isNri = isNri,
+                nriCountry = if (isNri) nriCountry else "",
+                hasMaritalHistory = (maritalStatus != "Unmarried"),
+                maritalStatus = finalMaritalStatus,
+                subCaste = subCaste,
+                gol = gol,
+                gotra = gotra,
+                motherGotra = motherGotra,
+                nativeVillage = nativeVillage,
+                motherBirthVillage = motherBirthVillage,
+                locality = locality,
+                education = education,
+                occupation = occupation,
+                monthlyIncome = monthlyIncome,
+                hobbies = hobbies,
+                familyDetails = familyDetails,
+                aboutMe = aboutMe,
+                rashi = rashi,
+                manglikStatus = manglikStatus
+            )
+            viewModel.saveDraftLocally(draftProfile)
+        }
+        viewModel.logout()
+        if (onLogoutClick != null) {
+            onLogoutClick()
+        } else {
+            onBackClick()
+        }
+    }
+
+    if (!isEditing && myProfile.fullName.isNotBlank()) {
+        LockedBioDataView(
+            profile = myProfile,
+            viewModel = viewModel,
+            onEditClick = { isEditing = true },
+            onBackClick = onBackClick,
+            onLogoutClick = { performLogout() },
+            onRefreshClick = {
+                viewModel.refreshDashboard()
+                Toast.makeText(context, "મંજૂરી સ્થિતિ તાજી કરી રહ્યા છીએ... (Refreshing Status)", Toast.LENGTH_SHORT).show()
+            }
+        )
+        return
+    }
 
     // Synchronize form fields whenever myProfile is updated/loaded from Firestore or local DB
     LaunchedEffect(myProfile) {
@@ -163,13 +315,17 @@ fun ProfileSetupScreen(
             if (myProfile.birthPlace.isNotBlank()) birthPlace = myProfile.birthPlace
             if (myProfile.height.isNotBlank()) height = myProfile.height
             if (myProfile.currentCity.isNotBlank()) currentCity = myProfile.currentCity
+            if (myProfile.aadharNumber.isNotBlank()) aadharNumber = myProfile.aadharNumber
             if (myProfile.phoneContact.isNotBlank()) {
                 phoneContact = myProfile.phoneContact
-                if (myProfile.phoneContact.contains("@")) regEmail = myProfile.phoneContact
+                regEmail = myProfile.phoneContact
+            } else if (myProfile.parentPhoneContact.isNotBlank()) {
+                if (regEmail.isBlank()) regEmail = myProfile.parentPhoneContact
             }
             if (myProfile.parentPhoneContact.isNotBlank()) parentPhoneContact = myProfile.parentPhoneContact
             if (myProfile.bloodGroup.isNotBlank()) bloodGroup = myProfile.bloodGroup
             isNri = myProfile.isNri
+            if (myProfile.nriCountry.isNotBlank()) nriCountry = myProfile.nriCountry
             if (myProfile.maritalStatus.isNotBlank()) {
                 val ms = myProfile.maritalStatus
                 val knownOptions = listOf("Unmarried", "Widow", "Awaiting Divorce", "Divorced")
@@ -206,6 +362,25 @@ fun ProfileSetupScreen(
         }
     }
 
+    LaunchedEffect(regEmail, phoneContact, parentPhoneContact, myProfile.id) {
+        val phoneToCheck = regEmail.ifBlank { phoneContact }.ifBlank { parentPhoneContact }
+        val cleanPhone = phoneToCheck.replace(Regex("[^0-9]"), "")
+        if (cleanPhone.length >= 10) {
+            isMobileDuplicate = viewModel.isMobileRegistered(cleanPhone, myProfile.id)
+        } else {
+            isMobileDuplicate = false
+        }
+    }
+
+    LaunchedEffect(aadharNumber, myProfile.id) {
+        val cleanAadhar = aadharNumber.replace(Regex("[^0-9]"), "")
+        if (cleanAadhar.length == 12) {
+            isAadharDuplicate = viewModel.isAadharRegistered(cleanAadhar, myProfile.id)
+        } else {
+            isAadharDuplicate = false
+        }
+    }
+
     LaunchedEffect(generatedVoiceBio) {
         if (generatedVoiceBio.isNotBlank()) {
             aboutMe = generatedVoiceBio
@@ -223,15 +398,56 @@ fun ProfileSetupScreen(
         when (step) {
             1 -> {
                 showStep1Errors = true
-                val isPhoneOk = regEmail.length == 10 && regEmail.all { it.isDigit() }
-                if (regEmail.isBlank() || !isPhoneOk ||
-                    (!viewModel.isLoggedIn.value && regPassword.length < 6) ||
+                if (isUploadingProfile || isUploadingFront || isUploadingBack) {
+                    Toast.makeText(
+                        context,
+                        "⏳ ફોટો / આધાર અપલોડ થઈ રહ્યો છે. કૃપા કરીને ૧૦૦% પૂર્ણ થાય ત્યાં સુધી રાહ જુઓ!",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return false
+                }
+                if (myProfile.profileImageUrl.isBlank() || myProfile.aadharFrontUrl.isBlank() || myProfile.aadharBackUrl.isBlank()) {
+                    Toast.makeText(
+                        context,
+                        "પ્રોફાઇલ ફોટો, આધાર ફ્રન્ટ અને આધાર બેક ફોટો અપલોડ કરવો ફરજિયાત છે! (Profile photo, Aadhar front and back photos are required)",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return false
+                }
+                val cleanAadharNum = aadharNumber.replace(Regex("[^0-9]"), "")
+                if (cleanAadharNum.length != 12) {
+                    Toast.makeText(
+                        context,
+                        "૧૨ અંકનો સાચો આધાર કાર્ડ નંબર દાખલ કરવો ફરજિયાત છે! (Valid 12-digit Aadhar Card Number is required)",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return false
+                }
+                if (isAadharDuplicate) {
+                    Toast.makeText(
+                        context,
+                        "આ આધાર કાર્ડ નંબર પહેલેથી જ રજીસ્ટર્ડ છે! (This Aadhar Card Number is already registered)",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return false
+                }
+                if (isMobileDuplicate) {
+                    Toast.makeText(
+                        context,
+                        "આ મોબાઈલ નંબર પહેલેથી જ રજીસ્ટર્ડ છે! (This Mobile Number is already registered)",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return false
+                }
+                val isEditMode = viewModel.isLoggedIn.value || myProfile.fullName.isNotBlank()
+                val targetPhone = regEmail.ifBlank { myProfile.phoneContact }.ifBlank { parentPhoneContact }
+                val isPhoneOk = isEditMode || (targetPhone.length == 10 && targetPhone.all { it.isDigit() }) || (targetPhone.contains("@") && targetPhone.length >= 5)
+                if ((!isEditMode && targetPhone.isBlank()) || !isPhoneOk ||
+                    (!isEditMode && regPassword.length < 6) ||
                     fullName.isBlank() || fatherName.isBlank() || grandfatherName.isBlank() || motherName.isBlank() ||
                     age.isBlank() || age == "0" || birthDate.isBlank() ||
                     birthTime.isBlank() || birthPlace.isBlank() || height.isBlank() || currentCity.isBlank() ||
                     parentPhoneContact.isBlank() || parentPhoneContact.length != 10 ||
-                    myProfile.profileImageUrl.isBlank() ||
-                    myProfile.aadharFrontUrl.isBlank() || myProfile.aadharBackUrl.isBlank() ||
                     (maritalStatus == "Other" && maritalStatusOther.isBlank())) {
                     Toast.makeText(context, "પ્રથમ ચરણની તમામ ફરજિયાત લાલ ચિહ્નિત વિગતો ભરો!", Toast.LENGTH_LONG).show()
                     return false
@@ -268,6 +484,14 @@ fun ProfileSetupScreen(
     }
 
     fun jumpToStep(targetStep: Int) {
+        if (isUploadingProfile || isUploadingFront || isUploadingBack) {
+            Toast.makeText(
+                context,
+                "⏳ ફોટો / આધાર અપલોડ પ્રક્રિયા ચાલુ છે. કૃપા કરીને ૧૦૦% પૂર્ણ થાય ત્યાં સુધી રાહ જુઓ!",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
         if (targetStep <= currentStep) {
             currentStep = targetStep
             return
@@ -297,6 +521,7 @@ fun ProfileSetupScreen(
         MissingFieldInfo("પ્રોફાઇલ ફોટો", myProfile.profileImageUrl.isNotBlank(), 1),
         MissingFieldInfo("આધાર ફ્રન્ટ ફોટો", myProfile.aadharFrontUrl.isNotBlank(), 1),
         MissingFieldInfo("આધાર બેક ફોટો", myProfile.aadharBackUrl.isNotBlank(), 1),
+        MissingFieldInfo("આધાર કાર્ડ નંબર (૧૨ અંક)", aadharNumber.replace(" ", "").length == 12, 1),
         MissingFieldInfo("પોતાની શાખ", gotra.isNotBlank(), 2),
         MissingFieldInfo("માતાની શાખ", motherGotra.isNotBlank(), 2),
         MissingFieldInfo("મૂળ ગામ", nativeVillage.isNotBlank(), 2),
@@ -440,9 +665,9 @@ fun ProfileSetupScreen(
         val selectedIdx = showPolicyDetailDialogIndex!!
         val policies = listOf(
             Triple(if (appLanguage == "gu") "પ્રાઇવસી પોલિસી" else "Privacy Policy", Icons.Default.Security,
-                "Chaudhary Vivah Privacy Policy:\n\n1. Information Collection: We collect bio-data, Gothra details, contact info, and optional Aadhar ID strictly for matrimonial verification within Chaudhary community.\n\n2. Data Usage: Used solely for Gothra exogamy validation, 36-Guna Kundli matching, and profile discovery.\n\n3. Match Complete Deletion: You can permanently delete your profile, bio-data, and photos with 1-click once your match is finalized.\n\n4. Contact Support: srushtichaudhary11@gmail.com"),
+                "Chaudhary Vivah Privacy Policy:\n\n1. Information Collection: We collect bio-data, Gothra details, contact info, and optional Aadhar ID strictly for matrimonial verification within Chaudhary community.\n\n2. Data Usage: Used solely for Gothra exogamy validation, 36-Guna Kundli matching, and profile discovery.\n\n3. Match Complete Deletion: You can permanently delete your profile, bio-data, and photos with 1-click once your match is finalized.\n\n4. Contact Support: info@chaudharyvivah.in | 9016607483"),
             Triple(if (appLanguage == "gu") "રિફંડ પોલિસી" else "Refund Policy", Icons.Default.Payments,
-                "Chaudhary Vivah Refund & Cancellation Policy:\n\n1. 7-Day Refund Window: Full refund for unutilized paid subscriptions before viewing contact details or profile rejection.\n\n2. Non-Refundable: Once contact phone numbers are unlocked or after match completion account deletion.\n\n3. Processing Time: Approved refunds credited back within 5 to 7 business days to original payment method.\n\n4. Contact Support: srushtichaudhary11@gmail.com"),
+                "Chaudhary Vivah Refund & Cancellation Policy:\n\n1. 7-Day Refund Window: Full refund for unutilized paid subscriptions before viewing contact details or profile rejection.\n\n2. Non-Refundable: Once contact phone numbers are unlocked or after match completion account deletion.\n\n3. Processing Time: Approved refunds credited back within 5 to 7 business days to original payment method.\n\n4. Contact Support: info@chaudharyvivah.in | 9016607483"),
             Triple(if (appLanguage == "gu") "નિયમો અને શરતો" else "Terms & Conditions", Icons.Default.Gavel,
                 "Chaudhary Vivah Terms & Conditions:\n\n1. Legal Marriageable Age: Minimum 18 years for females and 21 years for males under Indian Marriage Act.\n\n2. Verified Chaudhary Profiles: Exclusive platform for Chaudhary community families.\n\n3. Authenticity: Submitting false bio-data or fake documents is prohibited.\n\n4. Admin Verification: All profiles undergo manual admin approval before public discovery."),
             Triple(if (appLanguage == "gu") "ડિસ્ક્લેમર" else "Disclaimer", Icons.Default.Info,
@@ -498,7 +723,7 @@ fun ProfileSetupScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon)
                 ) {
-                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(if (appLanguage == "gu") "વેબસાઇટ પેજ ઓપન કરો" else "Open Web Page", color = Color.White, fontSize = 12.sp)
                 }
@@ -509,6 +734,92 @@ fun ProfileSetupScreen(
                 }
             }
         )
+    }
+
+    androidx.activity.compose.BackHandler(enabled = true) {
+        if (isSaving || isUploadingProfile || isUploadingFront || isUploadingBack) {
+            showExitConfirmDialog = true
+        } else if (currentStep > 1) {
+            currentStep--
+        } else {
+            showExitConfirmDialog = true
+        }
+    }
+
+    if (showExitConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!isSaving) showExitConfirmDialog = false
+            },
+            icon = {
+                Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFD32F2F), modifier = Modifier.size(36.dp))
+            },
+            title = {
+                Text("ચેતવણી: ડેટા ગુમાવવાનું જોખમ", fontWeight = FontWeight.Bold, color = DarkMaroon)
+            },
+            text = {
+                Text(
+                    "સ્ક્રીન છોડવાથી ભરેલી માહિતી અથવા અપલોડ પ્રક્રિયા અધૂરી રહી શકે છે. શું તમે ખરેખર બહાર નીકળવા માંગો છો?\n\n(Leaving the screen may result in data loss or abort active uploads. Are you sure you want to leave the screen?)"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExitConfirmDialog = false
+                        onBackClick()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                ) {
+                    Text("હા, બહાર નીકળો (Yes, Exit)", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showExitConfirmDialog = false }
+                ) {
+                    Text("ના, અહીં જ રહો (Stay)", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    if (isSaving) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { /* strictly wait */ },
+            properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+        ) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCream),
+                border = androidx.compose.foundation.BorderStroke(2.dp, RoyalGold),
+                modifier = Modifier.padding(16.dp).fillMaxWidth(0.9f)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(48.dp),
+                        color = RoyalMaroon,
+                        strokeWidth = 4.dp
+                    )
+                    Text(
+                        text = "માહિતી ફાયરબેઝમાં સુરક્ષિત સાચવી રહ્યા છીએ...",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = RoyalMaroon,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Text(
+                        text = "કૃપા કરીને રાહ જુઓ, ડેટા સેવ પૂર્ણ થાય ત્યાં સુધી સ્ક્રીન બંધ કે બેક ન કરો.",
+                        fontSize = 12.sp,
+                        color = Color.DarkGray,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -526,30 +837,29 @@ fun ProfileSetupScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = {
-                            if (myProfile.fullName.isNotBlank()) {
-                                onBackClick()
-                            } else {
-                                currentStep = 1
-                            }
-                        },
+                        onClick = { performLogout() },
                         modifier = Modifier.testTag("registration_logout_icon")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Logout,
+                            imageVector = Icons.AutoMirrored.Filled.Logout,
                             contentDescription = "Logout",
                             tint = RoyalMaroon
                         )
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        if (currentStep > 1) {
-                            currentStep--
-                        } else {
-                            onBackClick()
-                        }
-                    }) {
+                    IconButton(
+                        onClick = {
+                            if (isSaving || isUploadingProfile || isUploadingFront || isUploadingBack) {
+                                showExitConfirmDialog = true
+                            } else if (currentStep > 1) {
+                                currentStep--
+                            } else {
+                                showExitConfirmDialog = true
+                            }
+                        },
+                        enabled = !isSaving
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "પાછા જાઓ")
                     }
                 },
@@ -930,10 +1240,23 @@ fun ProfileSetupScreen(
                         parentPhoneContact = parentPhoneContact, onParentPhoneChange = { raw -> parentPhoneContact = raw.filter { it.isDigit() }.take(10) },
                         bloodGroup = bloodGroup, onBloodGroupChange = { bloodGroup = it },
                         isNri = isNri, onIsNriChange = { isNri = it },
+                        nriCountry = nriCountry, onNriCountryChange = { nriCountry = it },
                         maritalStatus = maritalStatus, onMaritalStatusChange = { maritalStatus = it },
                         maritalStatusOther = maritalStatusOther, onMaritalStatusOtherChange = { maritalStatusOther = it },
+                        aadharNumber = aadharNumber, onAadharNumberChange = { aadharNumber = it },
+                        isAadharDuplicate = isAadharDuplicate,
+                        isMobileDuplicate = isMobileDuplicate,
                         viewModel = viewModel,
-                        showErrors = showStep1Errors
+                        showErrors = showStep1Errors,
+                        isUploadingProfile = isUploadingProfile,
+                        profileUploadProgress = profileUploadProgress,
+                        isUploadingFront = isUploadingFront,
+                        frontUploadProgress = frontUploadProgress,
+                        isUploadingBack = isUploadingBack,
+                        backUploadProgress = backUploadProgress,
+                        onUploadProfile = startUploadProfile,
+                        onUploadFront = startUploadFront,
+                        onUploadBack = startUploadBack
                     )
 
                     2 -> Step2CommunityAndVillage(
@@ -958,6 +1281,14 @@ fun ProfileSetupScreen(
                     4 -> Step4FamilyAndBio(
                         familyDetails = familyDetails, onFamilyDetailsChange = { familyDetails = it },
                         aboutMe = aboutMe, onAboutMeChange = { aboutMe = it },
+                        prefAgeMin = prefAgeMin, onPrefAgeMinChange = { prefAgeMin = it },
+                        prefAgeMax = prefAgeMax, onPrefAgeMaxChange = { prefAgeMax = it },
+                        prefHeightMin = prefHeightMin, onPrefHeightMinChange = { prefHeightMin = it },
+                        prefHeightMax = prefHeightMax, onPrefHeightMaxChange = { prefHeightMax = it },
+                        prefMinIncome = prefMinIncome, onPrefMinIncomeChange = { prefMinIncome = it },
+                        prefEducation = prefEducation, onPrefEducationChange = { prefEducation = it },
+                        prefOccupation = prefOccupation, onPrefOccupationChange = { prefOccupation = it },
+                        prefCity = prefCity, onPrefCityChange = { prefCity = it },
                         rashi = rashi, onRashiChange = { rashi = it },
                         voiceNotesInput = voiceNotesInput, onVoiceNotesChange = { voiceNotesInput = it },
                         isGeneratingBio = isGeneratingBio,
@@ -972,12 +1303,120 @@ fun ProfileSetupScreen(
                             }
                         },
                         showErrors = showStep4Errors,
-                        appLanguage = appLanguage
+                        appLanguage = appLanguage,
+                        isEditMode = viewModel.isLoggedIn.value || myProfile.fullName.isNotBlank(),
+                        registeredPhone = myProfile.phoneContact.ifBlank { parentPhoneContact }.ifBlank { regEmail },
+                        editOtpSent = editOtpSent,
+                        onSendEditOtp = {
+                            val targetPhone = myProfile.phoneContact.ifBlank { parentPhoneContact }.ifBlank { regEmail }.trim()
+                            if (targetPhone.length == 10 && targetPhone.all { it.isDigit() }) {
+                                isSendingEditOtp = true
+                                editOtpError = ""
+                                viewModel.sendFirebaseOtp(
+                                    context = context,
+                                    phoneNumber = targetPhone,
+                                    resendingToken = editResendToken,
+                                    onOtpSent = { verId, token ->
+                                        editVerificationId = verId
+                                        editResendToken = token
+                                        editOtpSent = true
+                                        isSendingEditOtp = false
+                                        editTimerSeconds = 60
+                                        editOtpError = ""
+                                        Toast.makeText(context, "નોંધાયેલ મોબાઈલ પર SMS OTP મોકલવામાં આવ્યો છે!", Toast.LENGTH_LONG).show()
+                                    },
+                                    onInstantSuccess = {
+                                        isEditOtpVerified = true
+                                        editOtpSent = true
+                                        isSendingEditOtp = false
+                                        editOtpError = ""
+                                        Toast.makeText(context, "મોબાઈલ નંબર ઓટોમેટિક ચકાસાયો!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onError = { err ->
+                                        isSendingEditOtp = false
+                                        editOtpError = err
+                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                    }
+                                )
+                            } else {
+                                editOtpError = "નોંધાયેલ મોબાઈલ નંબર અમાન્ય છે"
+                            }
+                        },
+                        editEnteredOtp = editEnteredOtp,
+                        onEditEnteredOtpChange = { editEnteredOtp = it },
+                        isEditOtpVerified = isEditOtpVerified,
+                        isSendingEditOtp = isSendingEditOtp,
+                        isVerifyingEditOtp = isVerifyingEditOtp,
+                        editTimerSeconds = editTimerSeconds,
+                        editOtpError = editOtpError,
+                        onVerifyEditOtp = {
+                            if (editEnteredOtp.trim().length == 6) {
+                                isVerifyingEditOtp = true
+                                editOtpError = ""
+                                viewModel.verifyFirebaseOtp(
+                                    verificationId = editVerificationId,
+                                    enteredCode = editEnteredOtp.trim(),
+                                    onSuccess = {
+                                        isEditOtpVerified = true
+                                        isVerifyingEditOtp = false
+                                        editOtpError = ""
+                                        Toast.makeText(context, "મોબાઈલ OTP સફળતાપૂર્વક ચકાસાયો!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onError = { err ->
+                                        isVerifyingEditOtp = false
+                                        editOtpError = err
+                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                    }
+                                )
+                            } else {
+                                editOtpError = "કૃપા કરીને ૬ અંકનો OTP દાખલ કરો"
+                            }
+                        }
                     )
                 }
             }
 
             // NAVIGATION BUTTONS (Back / Next / Save to Firestore)
+            // Active Upload Warning Banner
+            val isUploadingAny = isUploadingProfile || isUploadingFront || isUploadingBack
+            val highestUploadProgress = maxOf(profileUploadProgress, frontUploadProgress, backUploadProgress)
+
+            if (isUploadingAny) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFFF9800)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color(0xFFE65100),
+                            strokeWidth = 2.5.dp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "⏳ ફોટો / આધાર અપલોડ થઈ રહ્યો છે ($highestUploadProgress%)...",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = Color(0xFFE65100)
+                            )
+                            Text(
+                                text = "કૃપા કરીને ૧૦૦% પૂર્ણ થાય ત્યાં સુધી રાહ જુઓ. અપલોડ પૂર્ણ થયા પછી જ આગળ વધી શકાશે.",
+                                fontSize = 11.sp,
+                                color = Color(0xFFBF360C)
+                            )
+                        }
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -986,7 +1425,14 @@ fun ProfileSetupScreen(
             ) {
                 if (currentStep > 1) {
                     OutlinedButton(
-                        onClick = { currentStep-- },
+                        onClick = {
+                            if (!isUploadingAny) {
+                                currentStep--
+                            } else {
+                                Toast.makeText(context, "અપલોડ ચાલુ છે, કૃપા કરીને રાહ જુઓ!", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = !isSaving && !isUploadingAny,
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp),
@@ -999,17 +1445,34 @@ fun ProfileSetupScreen(
 
                 Button(
                     onClick = {
+                        if (isUploadingAny) {
+                            Toast.makeText(
+                                context,
+                                "⏳ ફોટો / આધાર અપલોડ પ્રક્રિયા ચાલુ છે ($highestUploadProgress%). કૃપા કરીને ૧૦૦% પૂર્ણ થાય ત્યાં સુધી રાહ જુઓ!",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            return@Button
+                        }
                         when (currentStep) {
                             1 -> {
                                 showStep1Errors = true
-                                if (regEmail.isBlank() || !regEmail.contains("@") ||
-                                    (!viewModel.isLoggedIn.value && regPassword.length < 6) ||
+                                if (myProfile.profileImageUrl.isBlank() || myProfile.aadharFrontUrl.isBlank() || myProfile.aadharBackUrl.isBlank()) {
+                                    Toast.makeText(
+                                        context,
+                                        "પ્રોફાઇલ ફોટો, આધાર ફ્રન્ટ અને આધાર બેક ફોટો અપલોડ કરવો ફરજિયાત છે! (Profile photo, Aadhar front & back required)",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    return@Button
+                                }
+                                val isEditProfile = viewModel.isLoggedIn.value || myProfile.fullName.isNotBlank()
+                                val targetPhone = regEmail.ifBlank { myProfile.phoneContact }.ifBlank { parentPhoneContact }
+                                val isPhoneOk = isEditProfile || (targetPhone.length == 10 && targetPhone.all { it.isDigit() }) || (targetPhone.contains("@") && targetPhone.length >= 5)
+                                if ((!isEditProfile && targetPhone.isBlank()) || !isPhoneOk ||
+                                    (!isEditProfile && regPassword.length < 6) ||
                                     fullName.isBlank() || fatherName.isBlank() || grandfatherName.isBlank() || motherName.isBlank() ||
                                     age.isBlank() || age == "0" || birthDate.isBlank() ||
                                     birthTime.isBlank() || birthPlace.isBlank() || height.isBlank() || currentCity.isBlank() ||
                                     parentPhoneContact.isBlank() || parentPhoneContact.length != 10 ||
-                                    myProfile.profileImageUrl.isBlank() ||
-                                    myProfile.aadharFrontUrl.isBlank() || myProfile.aadharBackUrl.isBlank() ||
                                     (maritalStatus == "Other" && maritalStatusOther.isBlank())) {
                                     Toast.makeText(
                                         context,
@@ -1066,15 +1529,47 @@ fun ProfileSetupScreen(
                                     ).show()
                                     return@Button
                                 }
-                                if (regEmail.isBlank() || fullName.isBlank() || fatherName.isBlank() || grandfatherName.isBlank() || motherName.isBlank() ||
+                                val isEditProfile = viewModel.isLoggedIn.value || myProfile.fullName.isNotBlank()
+                                val checkPhone = regEmail.ifBlank { myProfile.phoneContact }.ifBlank { parentPhoneContact }
+                                val cleanAadharNum = aadharNumber.replace(Regex("[^0-9]"), "")
+                                if ((!isEditProfile && checkPhone.isBlank()) || fullName.isBlank() || fatherName.isBlank() || grandfatherName.isBlank() || motherName.isBlank() ||
                                     myProfile.profileImageUrl.isBlank() ||
-                                    myProfile.aadharFrontUrl.isBlank() || myProfile.aadharBackUrl.isBlank()) {
+                                    myProfile.aadharFrontUrl.isBlank() || myProfile.aadharBackUrl.isBlank() || cleanAadharNum.length != 12) {
                                     Toast.makeText(
                                         context,
-                                        "પ્રથમ ચરણની માહિતી અપૂર્ણ છે! કૃપા કરીને પ્રથમ ચરણ તપાસો.",
+                                        "પ્રથમ ચરણની માહિતી અથવા આધાર નંબર અપૂર્ણ છે! કૃપા કરીને પ્રથમ ચરણ તપાસો.",
                                         Toast.LENGTH_LONG
                                     ).show()
                                     currentStep = 1
+                                    return@Button
+                                }
+
+                                if (isAadharDuplicate) {
+                                    Toast.makeText(
+                                        context,
+                                        "આ આધાર કાર્ડ નંબર પહેલેથી જ રજીસ્ટર્ડ છે! (Aadhar card number is already registered)",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    currentStep = 1
+                                    return@Button
+                                }
+
+                                if (isMobileDuplicate) {
+                                    Toast.makeText(
+                                        context,
+                                        "આ મોબાઈલ નંબર પહેલેથી જ રજીસ્ટર્ડ છે! (Mobile number is already registered)",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    currentStep = 1
+                                    return@Button
+                                }
+
+                                if (isEditProfile && !isEditOtpVerified && !viewModel.isAdmin.value) {
+                                    Toast.makeText(
+                                        context,
+                                        "પ્રોફાઇલમાં સુધારો સબમિટ કરવા માટે તમારા નોંધાયેલ નંબર (+91 $checkPhone) પર SMS OTP મેળવીને ચકાસણી કરો!",
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                     return@Button
                                 }
 
@@ -1087,7 +1582,12 @@ fun ProfileSetupScreen(
 
                                 // Final Save to Cloud Firestore
                                 isSaving = true
+                                val currentAuthUid = com.example.service.FirebaseAuthService.currentUser?.uid
+                                val effectiveUid = if (!currentAuthUid.isNullOrBlank()) currentAuthUid else myProfile.id
                                 val updated = myProfile.copy(
+                                    id = if (effectiveUid.isNotBlank() && effectiveUid != "USER_ME") effectiveUid else myProfile.id,
+                                    profileId = myProfile.profileId,
+                                    aadharNumber = cleanAadharNum,
                                     fullName = fullName,
                                     fatherName = fatherName,
                                     fatherOccupation = fatherOccupation,
@@ -1109,6 +1609,7 @@ fun ProfileSetupScreen(
                                     parentPhoneContact = parentPhoneContact,
                                     bloodGroup = bloodGroup,
                                     isNri = isNri,
+                                    nriCountry = if (isNri) nriCountry else "",
                                     hasMaritalHistory = computedHasMaritalHistory,
                                     maritalStatus = finalMaritalStatus,
                                     subCaste = subCaste,
@@ -1124,6 +1625,14 @@ fun ProfileSetupScreen(
                                     hobbies = hobbies,
                                     familyDetails = familyDetails,
                                     aboutMe = aboutMe,
+                                    prefAgeMin = prefAgeMin.toIntOrNull() ?: 21,
+                                    prefAgeMax = prefAgeMax.toIntOrNull() ?: 32,
+                                    prefHeightMin = prefHeightMin,
+                                    prefHeightMax = prefHeightMax,
+                                    prefMinIncome = prefMinIncome,
+                                    prefEducation = prefEducation,
+                                    prefOccupation = prefOccupation,
+                                    prefCity = prefCity,
                                     rashi = rashi,
                                     manglikStatus = "Non-Manglik",
                                     isApproved = if (viewModel.isAdmin.value) true else false,
@@ -1151,19 +1660,28 @@ fun ProfileSetupScreen(
                                         }
                                     )
                                 } else {
-                                    viewModel.updateMyProfile(updated)
-                                    val toastMsg = if (viewModel.isAdmin.value) {
-                                        "બાયોડેટા સફળતાપૂર્વક અપડેટ કરવામાં આવ્યો છે!"
-                                    } else {
-                                        "બાયોડેટા લોક થયો! એડમિનની મંજૂરી બાદ પ્રોફાઇલ અન્ય ડેશબોર્ડ પર પ્રદર્શિત થશે."
+                                    viewModel.updateMyProfile(updated) { result ->
+                                        isSaving = false
+                                        if (result.isSuccess) {
+                                            isEditing = false
+                                            val toastMsg = if (viewModel.isAdmin.value) {
+                                                "બાયોડેટા સફળતાપૂર્વક અપડેટ કરવામાં આવ્યો છે!"
+                                            } else {
+                                                "બાયોડેટા લોક થયો! એડમિનની મંજૂરી બાદ પ્રોફાઇલ અન્ય ડેશબોર્ડ પર પ્રદર્શિત થશે."
+                                            }
+                                            Toast.makeText(
+                                                context,
+                                                toastMsg,
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        } else {
+                                            Toast.makeText(
+                                                context,
+                                                "બાયોડેટા સાચવવામાં નિષ્ફળતા! કૃપા કરીને ફરી પ્રયાસ કરો.",
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        }
                                     }
-                                    Toast.makeText(
-                                        context,
-                                        toastMsg,
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                    isSaving = false
-                                    isEditing = false
                                 }
                             }
                         }
@@ -1172,6 +1690,7 @@ fun ProfileSetupScreen(
                         .weight(1f)
                         .height(50.dp)
                         .testTag("step_next_save_button"),
+                    enabled = !isSaving && !isUploadingAny,
                     colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -1179,10 +1698,14 @@ fun ProfileSetupScreen(
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("સાચવી રહ્યા છીએ...")
+                    } else if (isUploadingAny) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("અપલોડ ચાલુ છે ($highestUploadProgress%)", fontWeight = FontWeight.Bold)
                     } else if (currentStep < 4) {
                         Text("આગળનું ચરણ", fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
                     } else {
                         Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
@@ -1193,6 +1716,31 @@ fun ProfileSetupScreen(
         }
     }
 }
+
+val NriCountryList = listOf(
+    "United States (USA)",
+    "Canada",
+    "United Kingdom (UK)",
+    "Australia",
+    "New Zealand",
+    "United Arab Emirates (UAE)",
+    "Qatar",
+    "Saudi Arabia",
+    "Kuwait",
+    "Oman",
+    "Bahrain",
+    "Singapore",
+    "Malaysia",
+    "Germany",
+    "Netherlands",
+    "France",
+    "Switzerland",
+    "Sweden",
+    "Ireland",
+    "Japan",
+    "South Africa",
+    "Other Country"
+)
 
 // STEP 1: Basic Information
 @Composable
@@ -1223,16 +1771,26 @@ fun Step1BasicInfo(
     parentPhoneContact: String, onParentPhoneChange: (String) -> Unit,
     bloodGroup: String, onBloodGroupChange: (String) -> Unit,
     isNri: Boolean, onIsNriChange: (Boolean) -> Unit,
+    nriCountry: String, onNriCountryChange: (String) -> Unit,
     maritalStatus: String, onMaritalStatusChange: (String) -> Unit,
     maritalStatusOther: String, onMaritalStatusOtherChange: (String) -> Unit,
+    aadharNumber: String = "", onAadharNumberChange: (String) -> Unit = {},
+    isAadharDuplicate: Boolean = false,
+    isMobileDuplicate: Boolean = false,
     viewModel: MatrimonyViewModel,
-    showErrors: Boolean = false
+    showErrors: Boolean = false,
+    isUploadingProfile: Boolean = false,
+    profileUploadProgress: Int = 0,
+    isUploadingFront: Boolean = false,
+    frontUploadProgress: Int = 0,
+    isUploadingBack: Boolean = false,
+    backUploadProgress: Int = 0,
+    onUploadProfile: (Uri) -> Unit = {},
+    onUploadFront: (Uri) -> Unit = {},
+    onUploadBack: (Uri) -> Unit = {}
 ) {
     val context = LocalContext.current
     val myProfile by viewModel.myProfile.collectAsState()
-    var isUploading by remember { mutableStateOf(false) }
-    var isUploadingFront by remember { mutableStateOf(false) }
-    var isUploadingBack by remember { mutableStateOf(false) }
 
     var stateExpanded by remember { mutableStateOf(false) }
     var districtExpanded by remember { mutableStateOf(false) }
@@ -1241,49 +1799,19 @@ fun Step1BasicInfo(
     val photoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            isUploading = true
-            viewModel.uploadProfileImage(it) { uploadedUrl ->
-                isUploading = false
-                if (uploadedUrl != null) {
-                    Toast.makeText(context, "તસવીર સફળતાપૂર્વક અપલોડ થઈ ગઈ!", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "અપલોડ નિષ્ફળ", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
+        uri?.let { onUploadProfile(it) }
     }
 
     val aadharFrontLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            isUploadingFront = true
-            viewModel.uploadAadharFrontImage(it) { uploadedUrl ->
-                isUploadingFront = false
-                if (uploadedUrl != null) {
-                    Toast.makeText(context, "આધાર ફ્રન્ટ ફોટો અપલોડ થયો!", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "આધાર ફ્રન્ટ અપલોડ નિષ્ફળ", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
+        uri?.let { onUploadFront(it) }
     }
 
     val aadharBackLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            isUploadingBack = true
-            viewModel.uploadAadharBackImage(it) { uploadedUrl ->
-                isUploadingBack = false
-                if (uploadedUrl != null) {
-                    Toast.makeText(context, "આધાર બેક ફોટો અપલોડ થયો!", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(context, "આધાર બેક અપલોડ નિષ્ફળ", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
+        uri?.let { onUploadBack(it) }
     }
 
     Card(
@@ -1303,141 +1831,7 @@ fun Step1BasicInfo(
                 color = RoyalMaroon
             )
 
-            // Firebase Storage Profile Picture Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = SoftGold.copy(alpha = 0.3f)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, RoyalGold)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(CircleShape)
-                            .background(RoyalMaroon.copy(alpha = 0.15f))
-                            .border(1.5.dp, RoyalGold, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (myProfile.profileImageUrl.isNotBlank()) {
-                            coil.compose.AsyncImage(
-                                model = myProfile.profileImageUrl,
-                                contentDescription = "Profile Photo",
-                                placeholder = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.img_matrimony_hero_1784990427738),
-                                error = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.img_matrimony_hero_1784990427738),
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.AddAPhoto,
-                                contentDescription = null,
-                                tint = RoyalMaroon,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "પ્રોફાઇલ તસવીર (ફાયરબેઝ સ્ટોરેજ)",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = RoyalMaroon
-                        )
-                        Text(
-                            text = if (myProfile.profileImageUrl.isNotBlank()) "તસવીર લિંક થયેલ છે" else "ગેલરીમાંથી તસવીર ઉમેરો",
-                            fontSize = 11.sp,
-                            color = Color.Gray
-                        )
-                    }
-
-                    Button(
-                        onClick = { photoLauncher.launch("image/*") },
-                        enabled = !isUploading,
-                        colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        if (isUploading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("અપલોડ", fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-
-            // MANDATORY AADHAR PHOTOS SECTION
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, RoyalGold),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Badge,
-                            contentDescription = null,
-                            tint = RoyalMaroon,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "આધાર કાર્ડ ફોટો અપલોડ (ફરજિયાત *)",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = RoyalMaroon
-                            )
-                            Text(
-                                text = "એડમિન ચકાસણી માટે આગળનો અને પાછળનો ફોટો જરૂરી છે",
-                                fontSize = 11.sp,
-                                color = Color.DarkGray
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        AadharPhotoUploadCard(
-                            label = "આધાર ફ્રન્ટ (આગળ)",
-                            imageUrl = myProfile.aadharFrontUrl,
-                            isUploading = isUploadingFront,
-                            onUploadClick = { aadharFrontLauncher.launch("image/*") },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        AadharPhotoUploadCard(
-                            label = "આધાર બેક (પાછળ)",
-                            imageUrl = myProfile.aadharBackUrl,
-                            isUploading = isUploadingBack,
-                            onUploadClick = { aadharBackLauncher.launch("image/*") },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-
-            // Registration Account Credentials Section (Mobile Number & Realtime SMS OTP)
+            // Registration Account Credentials Section (Mobile Number & Realtime SMS OTP - ON TOP)
             var regOtpSent by remember { mutableStateOf(false) }
             var regGeneratedOtp by remember { mutableStateOf("") }
             var regResendToken by remember { mutableStateOf<com.google.firebase.auth.PhoneAuthProvider.ForceResendingToken?>(null) }
@@ -1447,22 +1841,6 @@ fun Step1BasicInfo(
             var isVerifyingRegOtp by remember { mutableStateOf(false) }
             var regTimerSeconds by remember { mutableStateOf(60) }
             var regOtpError by remember { mutableStateOf("") }
-            var showFirebaseSetupDialog by remember { mutableStateOf(false) }
-
-            if (showFirebaseSetupDialog) {
-                FirebasePhoneSetupDialog(
-                    onDismiss = { showFirebaseSetupDialog = false },
-                    onEnableTestingBypass = {
-                        val testOtp = (100000..999999).random().toString()
-                        regGeneratedOtp = "TEST_MODE_$testOtp"
-                        regOtpSent = true
-                        isSendingRegOtp = false
-                        regTimerSeconds = 60
-                        regOtpError = ""
-                        Toast.makeText(context, "ટેસ્ટિંગ મોડ: OTP $testOtp છે", Toast.LENGTH_LONG).show()
-                    }
-                )
-            }
 
             LaunchedEffect(regOtpSent, regTimerSeconds) {
                 if (regOtpSent && !isRegOtpVerified && regTimerSeconds > 0) {
@@ -1471,36 +1849,60 @@ fun Step1BasicInfo(
                 }
             }
 
+            val isEditProfileMode = viewModel.isLoggedIn.value || myProfile.fullName.isNotBlank()
+            val displayMobile = regEmail.ifBlank { myProfile.phoneContact }.ifBlank { parentPhoneContact }
+
             OutlinedTextField(
-                value = regEmail,
+                value = if (isEditProfileMode) displayMobile else regEmail,
                 onValueChange = {
-                    onRegEmailChange(it)
-                    if (regOtpSent) {
-                        regOtpSent = false
-                        isRegOtpVerified = false
-                        regEnteredOtp = ""
-                        regOtpError = ""
+                    if (!isEditProfileMode) {
+                        onRegEmailChange(it)
+                        if (regOtpSent) {
+                            regOtpSent = false
+                            isRegOtpVerified = false
+                            regEnteredOtp = ""
+                            regOtpError = ""
+                        }
                     }
                 },
-                label = { Text("લૉગિન મોબાઈલ નંબર (10 Digit Mobile Number - ફરજિયાત *)") },
+                label = {
+                    if (isEditProfileMode) {
+                        Text("નોંધાયેલ મોબાઈલ નંબર (લૉક થયેલ 🔒)")
+                    } else {
+                        Text("લૉગિન મોબાઈલ નંબર (10 Digit Mobile Number - ફરજિયાત *)")
+                    }
+                },
                 placeholder = { Text("૧૦ અંકનો મોબાઈલ નંબર દાખલ કરો") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("reg_email_input"),
                 leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = RoyalMaroon) },
+                trailingIcon = {
+                    if (isEditProfileMode) {
+                        Icon(Icons.Default.Lock, contentDescription = "Locked", tint = Color.Gray)
+                    }
+                },
                 singleLine = true,
-                enabled = !isRegOtpVerified && !isSendingRegOtp,
-                isError = showErrors && (regEmail.isBlank() || regEmail.length != 10 || !regEmail.all { it.isDigit() }),
+                enabled = !isEditProfileMode && !isRegOtpVerified && !isSendingRegOtp,
+                isError = (showErrors && !isEditProfileMode && (regEmail.isBlank() || regEmail.length != 10 || !regEmail.all { it.isDigit() })) || isMobileDuplicate,
                 supportingText = {
-                    if (showErrors && (regEmail.isBlank() || regEmail.length != 10 || !regEmail.all { it.isDigit() })) {
+                    if (isMobileDuplicate) {
+                        Text(
+                            "આ મોબાઈલ નંબર પહેલેથી જ રજીસ્ટર્ડ છે! (Mobile number is already registered)",
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                    } else if (isEditProfileMode) {
+                        Text("નોંધાયેલ મોબાઈલ નંબર બદલી શકાશે નહીં (Locked)", color = Color.Gray, fontSize = 11.sp)
+                    } else if (showErrors && (regEmail.isBlank() || regEmail.length != 10 || !regEmail.all { it.isDigit() })) {
                         Text("કૃપા કરીને ૧૦ અંકનો યોગ્ય મોબાઈલ નંબર દાખલ કરો", color = MaterialTheme.colorScheme.error)
                     }
                 },
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone)
             )
 
-            // OTP Verification Box
-            if (!isRegOtpVerified) {
+            // OTP Verification Box (For New Registration Only)
+            if (!isEditProfileMode && !isRegOtpVerified) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = SurfaceCream),
                     border = androidx.compose.foundation.BorderStroke(1.dp, RoyalGold),
@@ -1510,20 +1912,11 @@ fun Step1BasicInfo(
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Security, contentDescription = null, tint = RoyalMaroon)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("મોબાઈલ નંબર ચકાસણી (Realtime OTP)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RoyalMaroon)
-                            }
-                            IconButton(
-                                onClick = { showFirebaseSetupDialog = true },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(Icons.Default.Info, contentDescription = "Firebase Setup Guide", tint = RoyalMaroon, modifier = Modifier.size(20.dp))
-                            }
+                            Icon(Icons.Default.Security, contentDescription = null, tint = RoyalMaroon)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("મોબાઈલ નંબર ચકાસણી (Realtime OTP)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = RoyalMaroon)
                         }
 
                         if (regOtpError.isNotBlank()) {
@@ -1538,16 +1931,6 @@ fun Step1BasicInfo(
                                         color = Color(0xFFD32F2F),
                                         fontSize = 12.sp
                                     )
-                                    if (regOtpError.contains("Play Integrity") || regOtpError.contains("SHA") || regOtpError.contains("Firebase") || regOtpError.contains("નિષ્ફળતા")) {
-                                        TextButton(
-                                            onClick = { showFirebaseSetupDialog = true },
-                                            contentPadding = PaddingValues(0.dp)
-                                        ) {
-                                            Icon(Icons.Default.VpnKey, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("SHA ફિંગરપ્રિન્ટ & સેટઅપ સહાયક ખોલો", color = RoyalMaroon, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -1782,6 +2165,232 @@ fun Step1BasicInfo(
                 )
             }
 
+            // Firebase Storage Profile Picture Card with Real-time Percentage Bar
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = when {
+                        isUploadingProfile -> Color(0xFFFFF8E1)
+                        myProfile.profileImageUrl.isNotBlank() -> Color(0xFFE8F5E9)
+                        else -> SoftGold.copy(alpha = 0.3f)
+                    }
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    when {
+                        isUploadingProfile -> WarmSaffron
+                        myProfile.profileImageUrl.isNotBlank() -> VerifiedGreen
+                        else -> RoyalGold
+                    }
+                ),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(CircleShape)
+                                .background(RoyalMaroon.copy(alpha = 0.15f))
+                                .border(
+                                    1.5.dp,
+                                    if (myProfile.profileImageUrl.isNotBlank()) VerifiedGreen else RoyalGold,
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isUploadingProfile) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(32.dp),
+                                    color = RoyalMaroon,
+                                    strokeWidth = 3.dp
+                                )
+                            } else if (myProfile.profileImageUrl.isNotBlank()) {
+                                coil.compose.AsyncImage(
+                                    model = myProfile.profileImageUrl,
+                                    contentDescription = "Profile Photo",
+                                    placeholder = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.img_matrimony_hero_1784990427738),
+                                    error = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.img_matrimony_hero_1784990427738),
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.AddAPhoto,
+                                    contentDescription = null,
+                                    tint = RoyalMaroon,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "પ્રોફાઇલ તસવીર (ફરજિયાત *)",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = RoyalMaroon
+                            )
+                            Text(
+                                text = when {
+                                    isUploadingProfile -> "સર્વર પર અપલોડ થઈ રહી છે... ($profileUploadProgress%)"
+                                    myProfile.profileImageUrl.isNotBlank() -> "સફળતાપૂર્વક અપલોડ થયેલ છે ✓"
+                                    else -> "ગેલરીમાંથી સ્પષ્ટ ફોટો પસંદ કરો"
+                                },
+                                fontSize = 11.sp,
+                                color = if (myProfile.profileImageUrl.isNotBlank()) VerifiedGreen else Color.Gray,
+                                fontWeight = if (myProfile.profileImageUrl.isNotBlank()) FontWeight.Medium else FontWeight.Normal
+                            )
+                        }
+
+                        Button(
+                            onClick = { photoLauncher.launch("image/*") },
+                            enabled = !isUploadingProfile,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (myProfile.profileImageUrl.isNotBlank()) DarkMaroon else RoyalMaroon
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            if (isUploadingProfile) {
+                                Text("$profileUploadProgress%", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            } else if (myProfile.profileImageUrl.isNotBlank()) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("બદલો", fontSize = 11.sp)
+                            } else {
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("અપલોડ *", fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    if (isUploadingProfile) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        LinearProgressIndicator(
+                            progress = { (profileUploadProgress / 100f).coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                            color = RoyalMaroon,
+                            trackColor = Color.LightGray.copy(alpha = 0.4f)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("અપલોડ સ્થિતિ", fontSize = 10.sp, color = Color.DarkGray)
+                            Text("$profileUploadProgress%", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = RoyalMaroon)
+                        }
+                    }
+                }
+            }
+
+            // MANDATORY AADHAR PHOTOS SECTION WITH PROGRESS
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, RoyalGold),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Badge,
+                            contentDescription = null,
+                            tint = RoyalMaroon,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "આધાર કાર્ડ ફોટો અપલોડ (ફરજિયાત *)",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = RoyalMaroon
+                            )
+                            Text(
+                                text = "એડમિન ચકાસણી માટે આગળનો અને પાછળનો ફોટો જરૂરી છે",
+                                fontSize = 11.sp,
+                                color = Color.DarkGray
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        AadharPhotoUploadCard(
+                            label = "આધાર ફ્રન્ટ (આગળ)",
+                            imageUrl = myProfile.aadharFrontUrl,
+                            isUploading = isUploadingFront,
+                            uploadProgress = frontUploadProgress,
+                            onUploadClick = { aadharFrontLauncher.launch("image/*") },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        AadharPhotoUploadCard(
+                            label = "આધાર બેક (પાછળ)",
+                            imageUrl = myProfile.aadharBackUrl,
+                            isUploading = isUploadingBack,
+                            uploadProgress = backUploadProgress,
+                            onUploadClick = { aadharBackLauncher.launch("image/*") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = aadharNumber,
+                onValueChange = { input ->
+                    val filtered = input.filter { it.isDigit() }.take(12)
+                    onAadharNumberChange(filtered)
+                },
+                label = { Text("૧૨ અંકનો આધાર કાર્ડ નંબર (12 Digit Aadhar Number - ફરજિયાત *)") },
+                placeholder = { Text("દા.ત. 123456789012") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("reg_aadhar_number_input"),
+                leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null, tint = RoyalMaroon) },
+                singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Next
+                ),
+                isError = (showErrors && aadharNumber.replace(" ", "").length != 12) || isAadharDuplicate,
+                supportingText = {
+                    val clean = aadharNumber.replace(" ", "")
+                    if (isAadharDuplicate) {
+                        Text(
+                            "આ આધાર કાર્ડ નંબર પહેલેથી જ રજીસ્ટર્ડ છે! (Aadhar card number is already registered)",
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        )
+                    } else if (showErrors && clean.length != 12) {
+                        Text("કૃપા કરીને ૧૨ અંકનો સાચો આધાર નંબર દાખલ કરો", color = MaterialTheme.colorScheme.error)
+                    } else if (clean.length == 12) {
+                        Text("✓ ૧૨ અંકનો આધાર નંબર દાખલ કરેલ છે", color = VerifiedGreen)
+                    }
+                }
+            )
+
             OutlinedTextField(
                 value = fullName,
                 onValueChange = onFullNameChange,
@@ -1998,93 +2607,77 @@ fun Step1BasicInfo(
             }
 
             // Birth Date & Birth Time Row (With Native Pickers)
+            val openDatePicker = {
+                val dpd = DatePickerDialog(
+                    context,
+                    com.example.R.style.LightDatePickerDialogTheme,
+                    { _, year, month, dayOfMonth ->
+                        val formatted = String.format("%02d/%02d/%04d", dayOfMonth, month + 1, year)
+                        onBirthDateChange(formatted)
+                        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+                        val calculatedAge = (currentYear - year).coerceIn(18, 80)
+                        onAgeChange(calculatedAge.toString())
+                    },
+                    1998, 7, 15
+                )
+                dpd.show()
+            }
+            val openTimePicker = {
+                val tpd = TimePickerDialog(
+                    context,
+                    com.example.R.style.LightTimePickerDialogTheme,
+                    { _, hourOfDay, minute ->
+                        val amPm = if (hourOfDay >= 12) "PM" else "AM"
+                        val h12 = if (hourOfDay % 12 == 0) 12 else hourOfDay % 12
+                        val formatted = String.format("%02d:%02d %s", h12, minute, amPm)
+                        onBirthTimeChange(formatted)
+                    },
+                    8, 30, false
+                )
+                tpd.show()
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // Birth Date Picker Field
-                OutlinedTextField(
-                    value = birthDate,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("જન્મ તારીખ") },
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable {
-                            val cal = Calendar.getInstance()
-                            val dpd = DatePickerDialog(
-                                context,
-                                { _, year, month, dayOfMonth ->
-                                    val formatted = String.format("%02d/%02d/%04d", dayOfMonth, month + 1, year)
-                                    onBirthDateChange(formatted)
-                                    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
-                                    val calculatedAge = (currentYear - year).coerceIn(18, 80)
-                                    onAgeChange(calculatedAge.toString())
-                                },
-                                1998, 7, 15
-                            )
-                            dpd.show()
-                        },
-                    leadingIcon = {
-                        IconButton(onClick = {
-                            val cal = Calendar.getInstance()
-                            val dpd = DatePickerDialog(
-                                context,
-                                { _, year, month, dayOfMonth ->
-                                    val formatted = String.format("%02d/%02d/%04d", dayOfMonth, month + 1, year)
-                                    onBirthDateChange(formatted)
-                                    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
-                                    val calculatedAge = (currentYear - year).coerceIn(18, 80)
-                                    onAgeChange(calculatedAge.toString())
-                                },
-                                1998, 7, 15
-                            )
-                            dpd.show()
-                        }) {
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedTextField(
+                        value = birthDate,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("જન્મ તારીખ") },
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = {
                             Icon(Icons.Default.CalendarToday, contentDescription = "Pick Birth Date")
                         }
-                    }
-                )
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { openDatePicker() }
+                    )
+                }
 
                 // Birth Time Picker Field
-                OutlinedTextField(
-                    value = birthTime,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("જન્મ સમય") },
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable {
-                            val tpd = TimePickerDialog(
-                                context,
-                                { _, hourOfDay, minute ->
-                                    val amPm = if (hourOfDay >= 12) "PM" else "AM"
-                                    val h12 = if (hourOfDay % 12 == 0) 12 else hourOfDay % 12
-                                    val formatted = String.format("%02d:%02d %s", h12, minute, amPm)
-                                    onBirthTimeChange(formatted)
-                                },
-                                8, 30, false
-                            )
-                            tpd.show()
-                        },
-                    leadingIcon = {
-                        IconButton(onClick = {
-                            val tpd = TimePickerDialog(
-                                context,
-                                { _, hourOfDay, minute ->
-                                    val amPm = if (hourOfDay >= 12) "PM" else "AM"
-                                    val h12 = if (hourOfDay % 12 == 0) 12 else hourOfDay % 12
-                                    val formatted = String.format("%02d:%02d %s", h12, minute, amPm)
-                                    onBirthTimeChange(formatted)
-                                },
-                                8, 30, false
-                            )
-                            tpd.show()
-                        }) {
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedTextField(
+                        value = birthTime,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("જન્મ સમય") },
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = {
                             Icon(Icons.Default.Schedule, contentDescription = "Pick Birth Time")
                         }
-                    }
-                )
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { openTimePicker() }
+                    )
+                }
             }
 
             // Birth Place Selection (India States -> Districts -> Sub-districts)
@@ -2116,14 +2709,15 @@ fun Step1BasicInfo(
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("રાજ્ય (State)") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { stateExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
                             trailingIcon = {
-                                IconButton(onClick = { stateExpanded = true }) {
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Select State")
-                                }
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Select State")
                             }
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { stateExpanded = true }
                         )
                         DropdownMenu(
                             expanded = stateExpanded,
@@ -2159,14 +2753,15 @@ fun Step1BasicInfo(
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("જિલ્લો (District)") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { districtExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
                             trailingIcon = {
-                                IconButton(onClick = { districtExpanded = true }) {
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Select District")
-                                }
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Select District")
                             }
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { districtExpanded = true }
                         )
                         DropdownMenu(
                             expanded = districtExpanded,
@@ -2199,14 +2794,15 @@ fun Step1BasicInfo(
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("તાલુકો / સબ-જિલ્લો (Sub-district)") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { subDistrictExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
                             trailingIcon = {
-                                IconButton(onClick = { subDistrictExpanded = true }) {
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Sub-District")
-                                }
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Sub-District")
                             }
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { subDistrictExpanded = true }
                         )
                         DropdownMenu(
                             expanded = subDistrictExpanded,
@@ -2312,7 +2908,6 @@ fun Step1BasicInfo(
                     label = { Text("બ્લડ ગ્રુપ પસંદ કરો (Blood Group Selection) *") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { bloodGroupExpanded = true }
                         .testTag("blood_group_dropdown_input"),
                     leadingIcon = {
                         Icon(
@@ -2322,10 +2917,13 @@ fun Step1BasicInfo(
                         )
                     },
                     trailingIcon = {
-                        IconButton(onClick = { bloodGroupExpanded = true }) {
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Blood Group")
-                        }
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Blood Group")
                     }
+                )
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clickable { bloodGroupExpanded = true }
                 )
                 DropdownMenu(
                     expanded = bloodGroupExpanded,
@@ -2364,80 +2962,130 @@ fun Step1BasicInfo(
                 colors = CardDefaults.cardColors(containerColor = SoftGold.copy(alpha = 0.25f)),
                 border = androidx.compose.foundation.BorderStroke(1.dp, RoyalGold.copy(alpha = 0.6f))
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(12.dp)
                 ) {
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.FlightTakeoff,
-                            contentDescription = "NRI Icon",
-                            tint = RoyalMaroon,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "શું ઉમેદવાર NRI છે? (Is Candidate NRI?)",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = DarkMaroon
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FlightTakeoff,
+                                contentDescription = "NRI Icon",
+                                tint = RoyalMaroon,
+                                modifier = Modifier.size(24.dp)
                             )
-                            Text(
-                                text = if (isNri) "હા - NRI ઉમેદવાર (Abroad)" else "ના - ભારતમાં નિવાસી (Resident)",
-                                fontSize = 11.5.sp,
-                                color = Color.DarkGray
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "શું ઉમેદવાર NRI છે? (Is Candidate NRI?)",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = DarkMaroon
+                                )
+                                Text(
+                                    text = if (isNri) "હા - NRI ઉમેદવાર (Abroad)" else "ના - ભારતમાં નિવાસી (Resident)",
+                                    fontSize = 11.5.sp,
+                                    color = Color.DarkGray
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            FilterChip(
+                                selected = isNri,
+                                onClick = { onIsNriChange(true) },
+                                label = { Text("હા (Yes)") },
+                                modifier = Modifier.testTag("nri_yes_toggle"),
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (isNri) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = RoyalMaroon,
+                                    selectedLabelColor = Color.White,
+                                    selectedLeadingIconColor = Color.White
+                                )
+                            )
+
+                            FilterChip(
+                                selected = !isNri,
+                                onClick = { onIsNriChange(false) },
+                                label = { Text("ના (No)") },
+                                modifier = Modifier.testTag("nri_no_toggle"),
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (!isNri) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = RoyalMaroon,
+                                    selectedLabelColor = Color.White,
+                                    selectedLeadingIconColor = Color.White
+                                )
                             )
                         }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        FilterChip(
-                            selected = isNri,
-                            onClick = { onIsNriChange(true) },
-                            label = { Text("હા (Yes)") },
-                            modifier = Modifier.testTag("nri_yes_toggle"),
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = if (isNri) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = RoyalMaroon,
-                                selectedLabelColor = Color.White,
-                                selectedLeadingIconColor = Color.White
+                    if (isNri) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        var countryExpanded by remember { mutableStateOf(false) }
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = nriCountry.ifBlank { "United States (USA)" },
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("NRI દેશ પસંદ કરો (Select Country) *") },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("nri_country_dropdown_input"),
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Public,
+                                        contentDescription = "Country",
+                                        tint = RoyalMaroon
+                                    )
+                                },
+                                trailingIcon = {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Country")
+                                }
                             )
-                        )
-
-                        FilterChip(
-                            selected = !isNri,
-                            onClick = { onIsNriChange(false) },
-                            label = { Text("ના (No)") },
-                            modifier = Modifier.testTag("nri_no_toggle"),
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = if (!isNri) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = RoyalMaroon,
-                                selectedLabelColor = Color.White,
-                                selectedLeadingIconColor = Color.White
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { countryExpanded = true }
                             )
-                        )
+                            DropdownMenu(
+                                expanded = countryExpanded,
+                                onDismissRequest = { countryExpanded = false },
+                                modifier = Modifier.fillMaxWidth(0.85f)
+                            ) {
+                                NriCountryList.forEach { countryOption ->
+                                    DropdownMenuItem(
+                                        text = { Text(countryOption) },
+                                        onClick = {
+                                            onNriCountryChange(countryOption)
+                                            countryExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2789,6 +3437,14 @@ fun Step3CareerAndIncome(
 fun Step4FamilyAndBio(
     familyDetails: String, onFamilyDetailsChange: (String) -> Unit,
     aboutMe: String, onAboutMeChange: (String) -> Unit,
+    prefAgeMin: String, onPrefAgeMinChange: (String) -> Unit,
+    prefAgeMax: String, onPrefAgeMaxChange: (String) -> Unit,
+    prefHeightMin: String, onPrefHeightMinChange: (String) -> Unit,
+    prefHeightMax: String, onPrefHeightMaxChange: (String) -> Unit,
+    prefMinIncome: String, onPrefMinIncomeChange: (String) -> Unit,
+    prefEducation: String, onPrefEducationChange: (String) -> Unit,
+    prefOccupation: String, onPrefOccupationChange: (String) -> Unit,
+    prefCity: String, onPrefCityChange: (String) -> Unit,
     rashi: String, onRashiChange: (String) -> Unit,
     voiceNotesInput: String, onVoiceNotesChange: (String) -> Unit,
     isGeneratingBio: Boolean,
@@ -2799,7 +3455,19 @@ fun Step4FamilyAndBio(
     agreeRefund: Boolean, onAgreeRefundChange: (Boolean) -> Unit,
     onOpenPolicyUrl: (String) -> Unit,
     showErrors: Boolean = false,
-    appLanguage: String = "gu"
+    appLanguage: String = "gu",
+    isEditMode: Boolean = false,
+    registeredPhone: String = "",
+    editOtpSent: Boolean = false,
+    onSendEditOtp: () -> Unit = {},
+    editEnteredOtp: String = "",
+    onEditEnteredOtpChange: (String) -> Unit = {},
+    isEditOtpVerified: Boolean = false,
+    isSendingEditOtp: Boolean = false,
+    isVerifyingEditOtp: Boolean = false,
+    editTimerSeconds: Int = 60,
+    editOtpError: String = "",
+    onVerifyEditOtp: () -> Unit = {}
 ) {
     var rashiExpanded by remember { mutableStateOf(false) }
     val rashiOptions = listOf(
@@ -2841,14 +3509,15 @@ fun Step4FamilyAndBio(
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("રાશિ") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { rashiExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
                             trailingIcon = {
-                                IconButton(onClick = { rashiExpanded = true }) {
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Rashi")
-                                }
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Rashi")
                             }
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { rashiExpanded = true }
                         )
 
                         DropdownMenu(
@@ -2939,6 +3608,251 @@ fun Step4FamilyAndBio(
             }
         }
 
+        // Expected Matrimonial Partner Preferences Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceCream),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Favorite, contentDescription = null, tint = RoyalMaroon, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "ઈચ્છિત જીવનસાથીની અપેક્ષાઓ (Partner Preferences)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = RoyalMaroon
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = prefAgeMin,
+                        onValueChange = onPrefAgeMinChange,
+                        label = { Text("ન્યૂનતમ ઉંમર") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    OutlinedTextField(
+                        value = prefAgeMax,
+                        onValueChange = onPrefAgeMaxChange,
+                        label = { Text("મહત્તમ ઉંમર") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = prefHeightMin,
+                        onValueChange = onPrefHeightMinChange,
+                        label = { Text("ઓછામાં ઓછી ઊંચાઈ") },
+                        placeholder = { Text("5'0\"") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    OutlinedTextField(
+                        value = prefHeightMax,
+                        onValueChange = onPrefHeightMaxChange,
+                        label = { Text("વધુમાં વધુ ઊંચાઈ") },
+                        placeholder = { Text("6'2\"") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = prefEducation,
+                    onValueChange = onPrefEducationChange,
+                    label = { Text("અપેક્ષિત શિક્ષણ (Expected Education)") },
+                    placeholder = { Text("દા.ત. સ્નાતક / અનુસ્નાતક / B.E. / B.Ed...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                OutlinedTextField(
+                    value = prefOccupation,
+                    onValueChange = onPrefOccupationChange,
+                    label = { Text("અપેક્ષિત વ્યવસાય (Expected Occupation)") },
+                    placeholder = { Text("દા.ત. સરકારી નોકરી / પ્રાઇવેટ જોબ / વ્યવસાય...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = prefMinIncome,
+                        onValueChange = onPrefMinIncomeChange,
+                        label = { Text("અપેક્ષિત આવક (Min Income)") },
+                        placeholder = { Text("₹25,000+ / મહિનો") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    OutlinedTextField(
+                        value = prefCity,
+                        onValueChange = onPrefCityChange,
+                        label = { Text("અપેક્ષિત શહેર / રાજ્ય") },
+                        placeholder = { Text("ગુજરાત / અમદાવાદ / સ્થાનિક") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+            }
+        }
+
+        // PROFILE EDIT MODE OTP VERIFICATION CARD
+        if (isEditMode) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("profile_edit_otp_card"),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCream),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, RoyalGold),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Security, contentDescription = null, tint = RoyalMaroon)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "પ્રોફાઇલ સુધારા SMS ચકાસણી (Firebase OTP Verification) *",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = RoyalMaroon
+                        )
+                    }
+
+                    Text(
+                        text = "તમારો નોંધાયેલ મોબાઈલ નંબર: +91 $registeredPhone\nપ્રોફાઇલમાં કોઈપણ સુધારો એડમિન મંજૂરી માટે મોકલતા પહેલા Firebase SMS OTP ચકાસણી ફરજિયાત છે.",
+                        fontSize = 12.sp,
+                        color = Color.DarkGray
+                    )
+
+                    if (editOtpError.isNotBlank()) {
+                        Surface(
+                            color = Color(0xFFFFEBEE),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = editOtpError,
+                                color = Color(0xFFD32F2F),
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+
+                    if (isEditOtpVerified) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, VerifiedGreen),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Verified, contentDescription = null, tint = VerifiedGreen)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "મોબાઈલ OTP સફળતાપૂર્વક ચકાસાયો! હવે નીચેના સેવ બટનથી સુધારેલ પ્રોફાઇલ સબમિટ કરી શકો છો.",
+                                    fontWeight = FontWeight.Bold,
+                                    color = VerifiedGreen,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    } else if (!editOtpSent) {
+                        Button(
+                            onClick = onSendEditOtp,
+                            enabled = !isSendingEditOtp,
+                            colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon),
+                            modifier = Modifier.fillMaxWidth().testTag("send_edit_otp_button")
+                        ) {
+                            if (isSendingEditOtp) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("SMS OTP મોકલાઈ રહ્યો છે...")
+                            } else {
+                                Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Firebase OTP મોકલો (Send OTP to +91 $registeredPhone)")
+                            }
+                        }
+                    } else {
+                        OutlinedTextField(
+                            value = editEnteredOtp,
+                            onValueChange = onEditEnteredOtpChange,
+                            label = { Text("૬ અંકનો SMS OTP (Enter 6-digit OTP)") },
+                            placeholder = { Text("SMS કોડ દાખલ કરો") },
+                            leadingIcon = { Icon(Icons.Default.Pin, contentDescription = null, tint = RoyalMaroon) },
+                            singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth().testTag("edit_otp_input")
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (editTimerSeconds > 0) {
+                                Text("ફરીથી મોકલો: ${editTimerSeconds}s", fontSize = 12.sp, color = Color.Gray)
+                            } else {
+                                TextButton(
+                                    onClick = onSendEditOtp,
+                                    enabled = !isSendingEditOtp
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = RoyalMaroon)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("ફરીથી OTP મોકલો (Resend OTP)", fontSize = 12.sp, color = RoyalMaroon, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = onVerifyEditOtp,
+                            enabled = !isVerifyingEditOtp,
+                            colors = ButtonDefaults.buttonColors(containerColor = VerifiedGreen),
+                            modifier = Modifier.fillMaxWidth().testTag("verify_edit_otp_button")
+                        ) {
+                            if (isVerifyingEditOtp) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("ચકાસણી ચાલુ છે...")
+                            } else {
+                                Icon(Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("OTP ચકાસો (Verify OTP)", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // MANDATORY LEGAL POLICIES & AGREEMENT CARD
         Card(
             modifier = Modifier
@@ -2958,23 +3872,27 @@ fun Step4FamilyAndBio(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Gavel,
                             contentDescription = null,
                             tint = RoyalMaroon,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(22.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (appLanguage == "gu") "નિયમો, પોલિસી અને શરતોની મંજૂરી (ફરજિયાત *)" else "Legal Policies & Consent (Mandatory *)",
+                            text = if (appLanguage == "gu") "નિયમો, પોલિસી અને શરતોની મંજૂરી *" else "Legal Policies & Consent *",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
+                            fontSize = 13.5.sp,
                             color = RoyalMaroon
                         )
                     }
 
-                    TextButton(
+                    androidx.compose.material3.FilterChip(
+                        selected = agreeTerms && agreePrivacy && agreeDisclaimer && agreeRefund,
                         onClick = {
                             val allChecked = agreeTerms && agreePrivacy && agreeDisclaimer && agreeRefund
                             onAgreeTermsChange(!allChecked)
@@ -2982,18 +3900,28 @@ fun Step4FamilyAndBio(
                             onAgreeDisclaimerChange(!allChecked)
                             onAgreeRefundChange(!allChecked)
                         },
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = if (agreeTerms && agreePrivacy && agreeDisclaimer && agreeRefund)
-                                (if (appLanguage == "gu") "બધા અનચેક કરો" else "Deselect All")
-                            else
-                                (if (appLanguage == "gu") "બધા ટીક કરો (Select All)" else "Select All"),
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = RoyalMaroon
+                        label = {
+                            Text(
+                                text = if (agreeTerms && agreePrivacy && agreeDisclaimer && agreeRefund)
+                                    (if (appLanguage == "gu") "બધાં દૂર કરો" else "Deselect All")
+                                else
+                                    (if (appLanguage == "gu") "બધા ટીક કરો" else "Select All"),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = RoyalMaroon,
+                            selectedLabelColor = Color.White,
+                            containerColor = SurfaceCream,
+                            labelColor = RoyalMaroon
+                        ),
+                        border = androidx.compose.material3.FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = agreeTerms && agreePrivacy && agreeDisclaimer && agreeRefund,
+                            borderColor = RoyalGold
                         )
-                    }
+                    )
                 }
 
                 Text(
@@ -3079,6 +4007,7 @@ fun Step4FamilyAndBio(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PolicyCheckboxItem(
     checked: Boolean,
@@ -3091,12 +4020,12 @@ fun PolicyCheckboxItem(
     testTag: String
 ) {
     Row(
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(if (isError) Color(0xFFFFEBEE) else Color.Transparent)
-            .padding(vertical = 2.dp, horizontal = 4.dp)
+            .padding(vertical = 4.dp, horizontal = 4.dp)
     ) {
         Checkbox(
             checked = checked,
@@ -3105,28 +4034,37 @@ fun PolicyCheckboxItem(
                 checkedColor = RoyalMaroon,
                 uncheckedColor = if (isError) MaterialTheme.colorScheme.error else Color.Gray
             ),
-            modifier = Modifier.testTag(testTag)
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .testTag(testTag)
         )
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        FlowRow(
             modifier = Modifier
                 .weight(1f)
                 .clickable { onCheckedChange(!checked) }
+                .padding(top = 4.dp),
+            horizontalArrangement = Arrangement.Start,
+            verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = prefixText,
-                fontSize = 11.5.sp,
-                color = Color.DarkGray
-            )
+            if (prefixText.isNotBlank()) {
+                Text(
+                    text = prefixText,
+                    fontSize = 12.sp,
+                    color = Color.DarkGray
+                )
+            }
             Surface(
                 color = Color(0xFFE3F2FD),
-                shape = RoundedCornerShape(4.dp),
-                modifier = Modifier.clickable { onClickLink() }
+                shape = RoundedCornerShape(6.dp),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFF90CAF9)),
+                modifier = Modifier
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .clickable { onClickLink() }
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
                         text = linkText,
@@ -3135,21 +4073,23 @@ fun PolicyCheckboxItem(
                         color = Color(0xFF1565C0),
                         textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
                     )
-                    Spacer(modifier = Modifier.width(3.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Icon(
-                        imageVector = Icons.Default.OpenInNew,
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                         contentDescription = "Open Web Page",
                         tint = Color(0xFF1565C0),
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
             }
-            Text(
-                text = suffixText,
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isError) MaterialTheme.colorScheme.error else Color.DarkGray
-            )
+            if (suffixText.isNotBlank()) {
+                Text(
+                    text = suffixText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isError) MaterialTheme.colorScheme.error else Color.DarkGray
+                )
+            }
         }
     }
 }
@@ -3182,17 +4122,26 @@ fun AadharPhotoUploadCard(
     label: String,
     imageUrl: String,
     isUploading: Boolean,
+    uploadProgress: Int = 0,
     onUploadClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.height(110.dp),
+        modifier = modifier.height(130.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (imageUrl.isNotBlank()) Color(0xFFE8F5E9) else Color.White
+            containerColor = when {
+                isUploading -> Color(0xFFFFF8E1)
+                imageUrl.isNotBlank() -> Color(0xFFE8F5E9)
+                else -> Color.White
+            }
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (imageUrl.isNotBlank()) VerifiedGreen else Color.LightGray
+            when {
+                isUploading -> WarmSaffron
+                imageUrl.isNotBlank() -> VerifiedGreen
+                else -> Color.LightGray
+            }
         ),
         shape = RoundedCornerShape(10.dp)
     ) {
@@ -3203,7 +4152,30 @@ fun AadharPhotoUploadCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            if (imageUrl.isNotBlank()) {
+            if (isUploading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = RoyalMaroon,
+                    strokeWidth = 2.5.dp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { (uploadProgress / 100f).coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = RoyalMaroon,
+                    trackColor = Color.LightGray.copy(alpha = 0.4f)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "$uploadProgress% અપલોડ...",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RoyalMaroon
+                )
+            } else if (imageUrl.isNotBlank()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -3232,12 +4204,25 @@ fun AadharPhotoUploadCard(
                     }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = label,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = VerifiedGreen
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "$label ✓",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = VerifiedGreen
+                    )
+                    TextButton(
+                        onClick = onUploadClick,
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.height(20.dp)
+                    ) {
+                        Text("બદલો", fontSize = 10.sp, color = RoyalMaroon, fontWeight = FontWeight.SemiBold)
+                    }
+                }
             } else {
                 Text(
                     text = label,
@@ -3254,17 +4239,9 @@ fun AadharPhotoUploadCard(
                     shape = RoundedCornerShape(6.dp),
                     modifier = Modifier.height(32.dp)
                 ) {
-                    if (isUploading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(Icons.Default.AddAPhoto, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("અપલોડ", fontSize = 10.sp)
-                    }
+                    Icon(Icons.Default.AddAPhoto, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("અપલોડ કરો *", fontSize = 10.sp)
                 }
             }
         }

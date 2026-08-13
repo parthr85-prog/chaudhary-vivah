@@ -39,6 +39,15 @@ object FirebaseAuthService {
             null
         }
 
+    suspend fun ensureAuth(): FirebaseUser? {
+        val firebaseAuth = auth ?: return null
+        val existing = firebaseAuth.currentUser
+        if (existing != null) {
+            return existing
+        }
+        return null
+    }
+
     /**
      * Send real-time OTP via Firebase Phone Authentication.
      */
@@ -127,8 +136,8 @@ object FirebaseAuthService {
 
             val credentialManager = CredentialManager.create(activityContext)
             
-            // Web Client ID from Firebase project application-vivah
-            val webClientId = "685467333286-web.apps.googleusercontent.com"
+            // Web Client ID from Firebase project application-vivah (Client Type 3 in google-services.json)
+            val webClientId = "685467333286-8fgnfoao3inddj4hfhh9ind3aanv79c0.apps.googleusercontent.com"
 
             val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(webClientId)
                 .build()
@@ -214,11 +223,22 @@ object FirebaseAuthService {
             if (user != null) {
                 Result.success(user)
             } else {
-                Result.failure(Exception("email not registered. Kindly apply for New Registration"))
+                Result.failure(Exception("Email sign in returned null user"))
             }
         } catch (e: Exception) {
-            Log.e("FirebaseAuthService", "Sign in with email failed for $email", e)
-            Result.failure(Exception("email not registered. Kindly apply for New Registration"))
+            Log.w("FirebaseAuthService", "signInWithEmailAndPassword failed for $email, attempting createUserWithEmailAndPassword", e)
+            try {
+                val createResult = firebaseAuth.createUserWithEmailAndPassword(email, pass).await()
+                val user = createResult.user
+                if (user != null) {
+                    Result.success(user)
+                } else {
+                    Result.failure(e)
+                }
+            } catch (createEx: Exception) {
+                Log.e("FirebaseAuthService", "Both sign-in and create account failed for $email", createEx)
+                Result.failure(e)
+            }
         }
     }
 

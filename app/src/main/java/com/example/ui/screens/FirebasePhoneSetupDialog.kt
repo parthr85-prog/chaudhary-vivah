@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,8 +43,7 @@ object FirebaseAppCredentials {
 
 @Composable
 fun FirebasePhoneSetupDialog(
-    onDismiss: () -> Unit,
-    onEnableTestingBypass: (() -> Unit)? = null
+    onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -259,7 +259,7 @@ fun FirebasePhoneSetupDialog(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Firebase Console ઓપન કરો", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
@@ -282,22 +282,6 @@ fun FirebasePhoneSetupDialog(
                                 color = Color.DarkGray,
                                 lineHeight = 16.sp
                             )
-                        }
-                    }
-
-                    // Testing bypass option
-                    if (onEnableTestingBypass != null) {
-                        OutlinedButton(
-                            onClick = {
-                                onEnableTestingBypass()
-                                onDismiss()
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp), tint = RoyalMaroon)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("ઇમરજન્સી ટેસ્ટિંગ મોડ એક્ટિવેટ કરો", fontSize = 12.sp, color = RoyalMaroon, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

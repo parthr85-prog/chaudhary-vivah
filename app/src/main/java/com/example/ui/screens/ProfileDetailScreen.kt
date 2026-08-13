@@ -9,7 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,7 +35,6 @@ fun ProfileDetailScreen(
     profileId: String,
     viewModel: MatrimonyViewModel,
     onBackClick: () -> Unit,
-    onKundliClick: (Profile) -> Unit,
     onChatClick: (String) -> Unit
 ) {
     val profiles by viewModel.allProfiles.collectAsState()
@@ -48,8 +47,118 @@ fun ProfileDetailScreen(
         return
     }
 
+    val myProfile by viewModel.myProfile.collectAsState()
+    val isAdmin by viewModel.isAdmin.collectAsState()
     val isInterestAccepted = viewModel.isInterestAccepted(profile.id)
     val isBlocked = viewModel.isUserBlocked(profile.id)
+    val isOwnProfile = profile.id == myProfile.id
+    val canViewFull = isAdmin || isOwnProfile || isInterestAccepted
+
+    if (!canViewFull) {
+        val isInterestSent = profile.interestStatus == "SENT" || profile.interestStatus == "ACCEPTED"
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("સંપૂર્ણ બાયોડેટા લોક છે", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onBackClick) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "પાછા જાઓ")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = CreamBackground)
+                )
+            },
+            containerColor = CreamBackground
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderLightGold),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(70.dp)
+                                .clip(CircleShape)
+                                .background(LightRoseContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = RoyalMaroon,
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "સંપૂર્ણ બાયોડેટા લોક છે\n(Bio-Data Locked)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = RoyalMaroon,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+
+                        Text(
+                            text = "ચૌધરી વિવાહ પર ગોપનીયતા અને મર્યાદા જાળવવા માટે, ${profile.fullName} નો સંપૂર્ણ બાયોડેટા અને સંચાલન વિગતો ફક્ત ત્યારે જ જોઈ શકાશે જ્યારે સામેના સભ્ય તમારો 'રસ/પ્રસ્તાવ (Interest Request)' સ્વીકારશે.",
+                            fontSize = 13.5.sp,
+                            color = Color.DarkGray,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 20.sp
+                        )
+
+                        if (isInterestSent) {
+                            Surface(
+                                color = VerifiedGreenContainer,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "✓ તમે આ સભ્યને લગ્ન પ્રસ્તાવ મોકલેલ છે. સામે પક્ષ દ્વારા સ્વીકાર થયા પછી સંપૂર્ણ પ્રોફાઇલ અનલોક થશે.",
+                                    fontSize = 12.5.sp,
+                                    color = VerifiedGreen,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(12.dp),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        } else {
+                            Button(
+                                onClick = { viewModel.sendInterest(profile.id) },
+                                colors = ButtonDefaults.buttonColors(containerColor = RoyalMaroon),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("રસ દાખવો (Send Interest)", fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = onBackClick,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("પાછા જાઓ (Go Back)")
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
 
     var showContactModal by remember { mutableStateOf(false) }
     var showBlockConfirmDialog by remember { mutableStateOf(false) }
@@ -65,12 +174,14 @@ fun ProfileDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.toggleShortlist(profile.id, profile.isShortlisted) }) {
-                        Icon(
-                            imageVector = if (profile.isShortlisted) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "પસંદ કરો",
-                            tint = if (profile.isShortlisted) Color.Red else Color.Gray
-                        )
+                    if (!isAdmin) {
+                        IconButton(onClick = { viewModel.toggleShortlist(profile.id, profile.isShortlisted) }) {
+                            Icon(
+                                imageVector = if (profile.isShortlisted) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "પસંદ કરો",
+                                tint = if (profile.isShortlisted) Color.Red else Color.Gray
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = CreamBackground)
@@ -93,7 +204,9 @@ fun ProfileDetailScreen(
                     .fillMaxWidth()
                     .testTag("profile_detail_header"),
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = androidx.compose.foundation.BorderStroke(1.dp, BorderLightGold),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Box(
@@ -157,6 +270,22 @@ fun ProfileDetailScreen(
                             color = RoyalMaroon
                         )
                     )
+
+                    if (profile.profileId.isNotBlank()) {
+                        Surface(
+                            color = RoyalGold.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                        ) {
+                            Text(
+                                text = "પ્રોફાઇલ ID: ${profile.profileId}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = RoyalMaroon,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
 
                     Text(
                         text = "${profile.subCaste} • શાખ: ${profile.gotra}",
@@ -244,7 +373,9 @@ fun ProfileDetailScreen(
                 DetailRow("બ્લડ ગ્રુપ (Blood Group):", profile.bloodGroup.ifBlank { "A+" })
                 DetailRow(
                     "NRI ઉમેદવાર સ્થિતિ:",
-                    if (profile.isNri) "હા - NRI ઉમેદવાર (Foreign Resident)" else "ના - ભારતમાં નિવાસી (Resident)",
+                    if (profile.isNri) {
+                        if (profile.nriCountry.isNotBlank()) "હા - NRI ઉમેદવાર (${profile.nriCountry})" else "હા - NRI ઉમેદવાર (Foreign Resident)"
+                    } else "ના - ભારતમાં નિવાસી (Resident)",
                     isHighlight = profile.isNri
                 )
                 DetailRow(
@@ -305,27 +436,15 @@ fun ProfileDetailScreen(
                 DetailRow("પોતાના વિશે પરિચય:", profile.aboutMe)
             }
 
-            // Kundli Astrology Section
+            // Astrology Details Section
             DetailSectionCard(
-                title = "વૈદિક કુંડળી વિગતો (જન્માક્ષર)",
+                title = "જ્યોતિષ અને જન્મ વિગત (જન્માક્ષર)",
                 icon = Icons.Default.AutoAwesome
             ) {
                 DetailRow("રાશિ:", profile.rashi)
                 DetailRow("નક્ષત્ર:", profile.nakshatra)
                 DetailRow("માંગલિક સ્થિતિ:", profile.manglikStatus)
                 DetailRow("જન્મ સ્થળ અને સમય:", "${profile.birthPlace}, ${profile.birthTime}")
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = { onKundliClick(profile) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = WarmSaffron)
-                ) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("૩૬ ગુણ AI કુંડળી મિલન ચકાસો", fontWeight = FontWeight.Bold)
-                }
             }
 
             // Partner Preferences Section
@@ -393,7 +512,7 @@ fun ProfileDetailScreen(
                         imageVector = when {
                             isBlocked -> Icons.Default.Block
                             profile.interestStatus == "SENT" -> Icons.Default.CheckCircle
-                            else -> Icons.Default.Send
+                            else -> Icons.AutoMirrored.Filled.Send
                         },
                         contentDescription = null
                     )
@@ -436,7 +555,7 @@ fun ProfileDetailScreen(
                         .size(52.dp)
                         .background(if (isBlocked) Color.LightGray else SoftGold, RoundedCornerShape(12.dp))
                 ) {
-                    Icon(Icons.Default.Chat, contentDescription = "ચેટ કરો", tint = if (isBlocked) Color.Gray else RoyalMaroon)
+                    Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "ચેટ કરો", tint = if (isBlocked) Color.Gray else RoyalMaroon)
                 }
             }
 
@@ -572,6 +691,7 @@ fun DetailSectionCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, BorderLightGold),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

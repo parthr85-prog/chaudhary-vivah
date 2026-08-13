@@ -1,5 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.MyApplication" parent="android:Theme.DeviceDefault.NoActionBar" />
+    <style name="Theme.MyApplication" parent="android:Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:datePickerDialogTheme">@style/LightDatePickerDialogTheme</item>
+        <item name="android:timePickerDialogTheme">@style/LightTimePickerDialogTheme</item>
+    </style>
+
+    <style name="LightDatePickerDialogTheme" parent="android:Theme.DeviceDefault.Light.Dialog">
+        <item name="android:colorAccent">#821328</item>
+        <item name="android:colorPrimary">#821328</item>
+        <item name="android:colorControlActivated">#821328</item>
+    </style>
+
+    <style name="LightTimePickerDialogTheme" parent="android:Theme.DeviceDefault.Light.Dialog">
+        <item name="android:colorAccent">#821328</item>
+        <item name="android:colorPrimary">#821328</item>
+        <item name="android:colorControlActivated">#821328</item>
+    </style>
 </resources>

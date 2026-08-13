@@ -1,6 +1,7 @@
 package com.example
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -38,9 +40,30 @@ import com.example.ui.theme.RoyalMaroon
 import com.example.ui.viewmodel.MatrimonyViewModel
 
 class MainActivity : ComponentActivity() {
+    private val pendingIntentData = mutableStateOf<android.content.Intent?>(null)
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingIntentData.value = intent
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingIntentData.value = intent
+        com.example.service.NotificationHelper.initNotificationChannel(this)
+
+        // Prevent screenshots and screen recording across the app to protect user privacy
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE
+        )
         enableEdgeToEdge()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
         setContent {
             ChaudharyVivahTheme {
                 val viewModel: MatrimonyViewModel = viewModel()
@@ -56,12 +79,46 @@ class MainActivity : ComponentActivity() {
 
                 val isApprovedUser = isAdmin || myProfile.isApproved
 
+                // FCM Token Registration, Sync & Authenticated Realtime Listeners
+                LaunchedEffect(myProfile.id, isLoggedIn) {
+                    if (isLoggedIn && myProfile.id.isNotBlank() && myProfile.id != "USER_ME") {
+                        viewModel.attachRealtimeSync()
+                        com.example.service.FcmTokenManager.registerAndSyncFcmToken(myProfile.id)
+                    }
+                }
+
+                // Deep Link / Notification Tap Navigation Handler
+                val currentIntent = pendingIntentData.value
+                LaunchedEffect(currentIntent, isLoggedIn, isApprovedUser) {
+                    val intentToProcess = currentIntent
+                    if (isLoggedIn && isApprovedUser && intentToProcess != null) {
+                        val type = intentToProcess.getStringExtra("notification_type")
+                        val targetId = intentToProcess.getStringExtra("target_id")
+                            ?: intentToProcess.getStringExtra("sender_id")
+                            ?: intentToProcess.getStringExtra("chat_id")
+
+                        if (!type.isNullOrBlank()) {
+                            when (type) {
+                                "CHAT", "NEW_MESSAGE" -> {
+                                    if (!targetId.isNullOrBlank()) {
+                                        navController.navigate("chat/$targetId")
+                                    }
+                                }
+                                "INTEREST", "NEW_INTEREST", "INTEREST_ACCEPTED", "INTEREST_REJECTED" -> {
+                                    navController.navigate("interests")
+                                }
+                            }
+                            pendingIntentData.value = null
+                        }
+                    }
+                }
+
                 var showFilterSheet by remember { mutableStateOf(false) }
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
 
                 // Hide bottom bar on splash, auth, or for unapproved users pending admin approval
-                val showBottomBar = isLoggedIn && isApprovedUser && currentRoute in listOf("home", "top_picks", "kundli", "profile_setup", "interests", "admin_dashboard")
+                val showBottomBar = isLoggedIn && isApprovedUser && currentRoute in listOf("home", "shortlist", "interests", "profile_setup", "admin_dashboard")
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -125,41 +182,38 @@ class MainActivity : ComponentActivity() {
 
                                 if (!isAdmin) {
                                     NavigationBarItem(
-                                        selected = currentRoute == "top_picks",
+                                        selected = currentRoute == "shortlist",
                                         onClick = {
-                                            navController.navigate("top_picks") {
+                                            navController.navigate("shortlist") {
                                                 popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                                                 launchSingleTop = true
                                                 restoreState = true
                                             }
                                         },
-                                        icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "AI Picks") },
-                                        label = { Text(strings.navTopPicks, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                                        colors = NavigationBarItemDefaults.colors(
-                                            selectedIconColor = RoyalMaroon,
-                                            selectedTextColor = RoyalMaroon,
-                                            indicatorColor = LightRoseContainer
-                                        ),
-                                        modifier = Modifier.testTag("nav_top_picks")
-                                    )
-
-                                    NavigationBarItem(
-                                        selected = currentRoute == "kundli",
-                                        onClick = {
-                                            navController.navigate("kundli") {
-                                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                                launchSingleTop = true
-                                                restoreState = true
+                                        icon = {
+                                            val shortlistedList by viewModel.shortlistedProfiles.collectAsState()
+                                            BadgedBox(
+                                                badge = {
+                                                    if (shortlistedList.isNotEmpty()) {
+                                                        Badge(containerColor = Color.Red) {
+                                                            Text("${shortlistedList.size}", color = Color.White, fontSize = 10.sp)
+                                                        }
+                                                    }
+                                                }
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (currentRoute == "shortlist") Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                                                    contentDescription = "Shortlist"
+                                                )
                                             }
                                         },
-                                        icon = { Icon(Icons.Default.Stars, contentDescription = "Kundli") },
-                                        label = { Text(strings.navKundli, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                        label = { Text(if (appLanguage == "gu") "પસંદ કરેલ" else "Shortlist", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                                         colors = NavigationBarItemDefaults.colors(
                                             selectedIconColor = RoyalMaroon,
                                             selectedTextColor = RoyalMaroon,
                                             indicatorColor = LightRoseContainer
                                         ),
-                                        modifier = Modifier.testTag("nav_kundli")
+                                        modifier = Modifier.testTag("nav_shortlist")
                                     )
 
                                     NavigationBarItem(
@@ -238,7 +292,7 @@ class MainActivity : ComponentActivity() {
                                 onSplashComplete = {
                                     viewModel.updateDefaultSearchGender()
                                     if (viewModel.isLoggedIn.value) {
-                                        if (viewModel.isAdmin.value || viewModel.myProfile.value.phoneContact.equals("srushtichaudhary11@gmail.com", ignoreCase = true)) {
+                                        if (viewModel.isAdmin.value || viewModel.myProfile.value.phoneContact == "9724327777" || viewModel.myProfile.value.phoneContact.equals("srushtichaudhary11@gmail.com", ignoreCase = true)) {
                                             navController.navigate("admin_dashboard") {
                                                 popUpTo("splash") { inclusive = true }
                                             }
@@ -266,7 +320,7 @@ class MainActivity : ComponentActivity() {
                                 onLoginSuccess = { role, isNewUser ->
                                     viewModel.updateDefaultSearchGender()
                                     viewModel.refreshDashboard()
-                                    if (viewModel.isAdmin.value || viewModel.myProfile.value.phoneContact.equals("srushtichaudhary11@gmail.com", ignoreCase = true)) {
+                                    if (viewModel.isAdmin.value || viewModel.myProfile.value.phoneContact == "9724327777" || viewModel.myProfile.value.phoneContact.equals("srushtichaudhary11@gmail.com", ignoreCase = true)) {
                                         navController.navigate("admin_dashboard") {
                                             popUpTo("auth") { inclusive = true }
                                         }
@@ -301,21 +355,27 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        composable("shortlist") {
+                            com.example.ui.screens.ShortlistScreen(
+                                viewModel = viewModel,
+                                onBackClick = { navController.popBackStack() },
+                                onNavigateToProfileDetail = { profileId ->
+                                    navController.navigate("profile_detail/$profileId")
+                                },
+                                onNavigateToChat = { profileId ->
+                                    navController.navigate("chat/$profileId")
+                                }
+                            )
+                        }
+
                         composable("home") {
                             HomeScreen(
                                 viewModel = viewModel,
                                 onNavigateToProfileDetail = { profileId ->
                                     navController.navigate("profile_detail/$profileId")
                                 },
-                                onNavigateToKundli = { partner ->
-                                    viewModel.selectPartnerForKundli(partner)
-                                    navController.navigate("kundli")
-                                },
                                 onNavigateToChat = { profileId ->
                                     navController.navigate("chat/$profileId")
-                                },
-                                onNavigateToTopPicks = {
-                                    navController.navigate("top_picks")
                                 },
                                 onOpenFilterSheet = {
                                     showFilterSheet = true
@@ -323,8 +383,14 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToProfileSetup = {
                                     navController.navigate("profile_setup")
                                 },
+                                onNavigateToShortlist = {
+                                    navController.navigate("shortlist")
+                                },
                                 onNavigateToAdmin = {
                                     navController.navigate("admin_dashboard")
+                                },
+                                onNavigateToSubscription = {
+                                    navController.navigate("subscription")
                                 },
                                 onLogout = {
                                     viewModel.logout()
@@ -344,33 +410,9 @@ class MainActivity : ComponentActivity() {
                                 profileId = profileId,
                                 viewModel = viewModel,
                                 onBackClick = { navController.popBackStack() },
-                                onKundliClick = { partner ->
-                                    viewModel.selectPartnerForKundli(partner)
-                                    navController.navigate("kundli")
-                                },
                                 onChatClick = { pId ->
                                     navController.navigate("chat/$pId")
                                 }
-                            )
-                        }
-
-                        composable("top_picks") {
-                            TopPicksScreen(
-                                viewModel = viewModel,
-                                onBackClick = { navController.popBackStack() },
-                                onNavigateToProfileDetail = { profileId ->
-                                    navController.navigate("profile_detail/$profileId")
-                                },
-                                onNavigateToChat = { profileId ->
-                                    navController.navigate("chat/$profileId")
-                                }
-                            )
-                        }
-
-                        composable("kundli") {
-                            KundliMatchScreen(
-                                viewModel = viewModel,
-                                onBackClick = { navController.popBackStack() }
                             )
                         }
 
@@ -389,7 +431,12 @@ class MainActivity : ComponentActivity() {
                         composable("profile_setup") {
                             ProfileSetupScreen(
                                 viewModel = viewModel,
-                                onBackClick = { navController.popBackStack() }
+                                onBackClick = { navController.popBackStack() },
+                                onLogoutClick = {
+                                    navController.navigate("auth") {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                }
                             )
                         }
 
@@ -403,6 +450,13 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
+                            )
+                        }
+
+                        composable("subscription") {
+                            SubscriptionScreen(
+                                viewModel = viewModel,
+                                onBackClick = { navController.popBackStack() }
                             )
                         }
                     }
